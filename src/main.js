@@ -529,7 +529,10 @@ let haWs = null;
 let wsReconnectTimer = null;
 
 function connectNotifications() {
-  if (!config.url || !config.token) return;
+  // Always reload config to pick up refreshed tokens
+  config = loadConfig();
+  const accessToken = auth.getAccessToken() || config.token;
+  if (!config.url || !accessToken) return;
 
   const haUrl = config.url.replace(/\/+$/, '');
   const wsUrl = haUrl.replace(/^http/, 'ws') + '/api/websocket';
@@ -547,7 +550,7 @@ function connectNotifications() {
 
   haWs.on('open', () => {
     // Auth
-    haWs.send(JSON.stringify({ type: 'auth', access_token: config.token }));
+    haWs.send(JSON.stringify({ type: 'auth', access_token: accessToken }));
     log('[WS] Connected');
   });
 
