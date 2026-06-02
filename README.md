@@ -4,14 +4,27 @@ Home Assistant companion app for Linux touchscreen panels — built with Electro
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+---
+
+## About This Project
+
+This application was **designed and developed by an AI Agent** — [OpenClaw](https://github.com/openclaw/openclaw) powered by the **Z.AI** model.
+
+The agent had **direct access to real local resources**: Home Assistant instance, Raspberry Pi hardware (SSH, sensors, display), network infrastructure, and live logs. This enabled deep understanding of real-world issues — from token refresh race conditions to WebSocket authentication loops on embedded Linux devices — and allowed the agent to write, deploy, test, and iterate on fixes autonomously.
+
+**Human supervision** by [SimoneB79](https://github.com/SimoneB79): testing on physical hardware, debugging, and validation on actual Raspberry Pi touchscreen panels.
+
+---
+
 ## Features
 
 - 🔐 **Login** — Username/password + 2FA/MFA, or long-lived token
+- 🔑 **Persistent sessions** — OAuth2 token management with proactive refresh, survives reboots
 - 📱 **Device registration** — Registers as `mobile_app` in HA integrations
 - 📊 **System sensors** — CPU temp, CPU%, RAM%, disk%, uptime, IP, display state
-- 🔔 **Notifications** — Real-time via WebSocket, shown as overlay on dashboard
-- 🎛️ **Settings overlay** — Volume, brightness, Bluetooth, right on the dashboard
-- ⚡ **Auto-login** — Token persists across restarts
+- 🔔 **Push notifications** — Real-time via WebSocket with priority, channels, and custom sounds
+- 🎛️ **Settings overlay** — Volume, brightness, Bluetooth, clock, right on the dashboard
+- 🔄 **Auto-reconnect** — Health monitor detects HA restarts and reconnects automatically
 - 🔒 **Self-signed certs** — Works with local HTTPS (Caddy, Nginx)
 - 🖥️ **Fullscreen kiosk** — Optimized for 7" and 10" touch panels
 - ⌨️ **On-screen keyboard** — With shift, CAPS, symbols, URL shortcuts
@@ -37,7 +50,7 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-Creates a systemd service for auto-start on boot.
+Creates a systemd user service for auto-start on boot.
 
 ## Settings Menu
 
@@ -179,6 +192,20 @@ data:
   message: command_screen_brightness_level
   data:
     brightness: 30
+```
+
+## Architecture
+
+```
+src/
+├── main.js       # Electron main process: HA client, auth, sensors, notifications, system controls
+├── auth.js        # OAuth2 token management with proactive refresh
+├── preload.js     # IPC bridge (haCompanion API)
+└── views/
+    ├── login.html # Login UI with on-screen keyboard
+    ├── overlay.js # Settings overlay with notification/channel config
+    ├── toast.css  # Toast notification styles (priority colors, animations)
+    └── toast.js   # Toast overlay injected into HA dashboard
 ```
 
 ## Building
