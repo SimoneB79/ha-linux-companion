@@ -1,6 +1,6 @@
 {
   "name": "ha-linux-companion",
-  "version": "2.3.0-dev",
+  "version": "2.4.0",
   "description": "Home Assistant Companion for Linux — Professional desktop application",
   "main": "src/main.js",
   "scripts": {
