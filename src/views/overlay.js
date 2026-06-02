@@ -95,12 +95,22 @@
   function revealBar() { topbar.classList.remove('hidden'); scheduleBarHide(); }
   topbar.addEventListener('mouseenter', function() { clearTimeout(barHideTimer); topbar.classList.remove('hidden'); });
   topbar.addEventListener('mouseleave', function() { scheduleBarHide(); });
-  // Touch: reveal when touching near top 40px
+  // Touch: reveal on swipe-down from top edge (most reliable on touchscreens)
+  let touchStartY = 0;
   document.addEventListener('touchstart', function(e) {
-    if (e.touches[0].clientY < 40) revealBar();
+    touchStartY = e.touches[0].clientY;
+    // Tap near top also reveals
+    if (touchStartY < 60) revealBar();
   }, { passive: true });
+  document.addEventListener('touchmove', function(e) {
+    // Swipe down from top 30px reveals the bar
+    if (touchStartY < 30 && e.touches[0].clientY - touchStartY > 20) {
+      revealBar();
+      e.preventDefault(); // prevent HA from scrolling
+    }
+  }, { passive: false });
   document.addEventListener('mousemove', function(e) {
-    if (e.clientY < 10) revealBar();
+    if (e.clientY < 15) revealBar();
   });
   // Pin bar while panel is open
   // (handled in togglePanel below)
