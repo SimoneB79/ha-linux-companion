@@ -148,8 +148,9 @@ class HAClient {
       await this.webhook('register_sensor', sensor);
     }
 
-    // Then update states
-    await this.webhook('update_sensor_states', sensors);
+    // Then update states (strip registration-only fields)
+    const states = sensors.map(s => ({ unique_id: s.unique_id, state: s.state, type: s.type }));
+    await this.webhook('update_sensor_states', states);
   }
 
   // Update push_url for an existing registration
