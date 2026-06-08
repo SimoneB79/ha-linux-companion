@@ -193,8 +193,7 @@ async function collectSensors() {
       const temp = parseFloat(tempRaw) / 1000;
       sensors.push({
         unique_id: 'cpu_temperature', state: temp.toFixed(1), type: 'sensor',
-        name: 'CPU Temperature', unit_of_measurement: '°C',
-        device_class: 'temperature', state_class: 'measurement',
+        name: 'CPU Temperature', icon: 'mdi:thermometer',
       });
     } catch (e) { /* not a Pi */ }
 
@@ -203,7 +202,7 @@ async function collectSensors() {
       const cpu = await si.currentLoad();
       sensors.push({
         unique_id: 'cpu_usage', state: cpu.currentLoad.toFixed(1), type: 'sensor',
-        name: 'CPU Usage', unit_of_measurement: '%', state_class: 'measurement',
+        name: 'CPU Usage', icon: 'mdi:cpu-64-bit',
       });
     } catch (e) {}
 
@@ -212,11 +211,11 @@ async function collectSensors() {
       const mem = await si.mem();
       sensors.push({
         unique_id: 'ram_usage', state: ((mem.used / mem.total) * 100).toFixed(1), type: 'sensor',
-        name: 'RAM Usage', unit_of_measurement: '%', state_class: 'measurement',
+        name: 'RAM Usage', icon: 'mdi:memory',
       });
       sensors.push({
         unique_id: 'ram_free_mb', state: (mem.available / 1048576).toFixed(0), type: 'sensor',
-        name: 'RAM Free', unit_of_measurement: 'MB', state_class: 'measurement',
+        name: 'RAM Free', icon: 'mdi:memory',
       });
     } catch (e) {}
 
@@ -227,7 +226,7 @@ async function collectSensors() {
       if (root) {
         sensors.push({
           unique_id: 'disk_usage', state: root.use.toFixed(1), type: 'sensor',
-          name: 'Disk Usage', unit_of_measurement: '%', state_class: 'measurement',
+          name: 'Disk Usage', icon: 'mdi:harddisk',
         });
       }
     } catch (e) {}
@@ -254,7 +253,7 @@ async function collectSensors() {
     sensors.push({
       unique_id: 'display_state',
       state: mainWindow && !mainWindow.isDestroyed() ? 'on' : 'off',
-      type: 'binary_sensor', name: 'Display', device_class: 'power',
+      type: 'binary_sensor', name: 'Display', icon: 'mdi:monitor',
     });
 
   } catch (err) {
@@ -347,9 +346,16 @@ let dashboardLoaded = false;
 let authInjected = false;
 
 function loadDashboard() {
+  // Always reload config to get latest token after refresh
+  config = loadConfig();
   if (!config.url) return;
 
   const haUrl = config.url.replace(/\/+$/, '');
+  // Clear any pending reconnect and stale socket
+  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  if (haWs) { try { haWs.removeAllListeners(); haWs.close(); } catch(_) {} haWs = null; }
+
+  wsConnecting = true;
   const token = auth.getAccessToken() || config.token;
   dashboardLoaded = false;
   authInjected = false;
@@ -358,12 +364,21 @@ function loadDashboard() {
     userAgent: 'HA-Linux-Companion/' + APP_VERSION + ' (Linux; ' + os.hostname() + ')',
   });
 
+  // Detect when WebView lands on HA login page after disconnect/restart
+  mainWindow.webContents.removeAllListeners('did-navigate');
+  mainWindow.webContents.on('did-navigate', (event, url) => {
+    if (url.includes('/auth/authorize') || url.includes('/auth/login') || url.includes('/auth/token')) {
+      log('[WebView] Detected HA login page, reloading dashboard with fresh token...');
+      setTimeout(() => loadDashboard(), 1000);
+    }
+  });
+
   mainWindow.webContents.removeAllListeners('did-finish-load');
   mainWindow.webContents.on('did-finish-load', () => {
     if (authInjected) return;
     authInjected = true;
 
-    const token = config.token;
+    const token = auth.getAccessToken() || config.token;
     const expires = Date.now() + 86400000;
     const injectCode = [
       '(function() {',
@@ -528,13 +543,31 @@ function stopPushServer() {
 let haWs = null;
 let wsReconnectTimer = null;
 
+let wsConnecting = false;
+
+function cleanupWs() {
+  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  if (haWs) {
+    try { haWs.removeAllListeners(); haWs.close(); } catch (_) {}
+    haWs = null;
+  }
+  wsConnecting = false;
+}
 function connectNotifications() {
+  // Guard: prevent parallel connections
+  if (wsConnecting) return;
+
   // Always reload config to pick up refreshed tokens
   config = loadConfig();
   const accessToken = auth.getAccessToken() || config.token;
   if (!config.url || !accessToken) return;
 
   const haUrl = config.url.replace(/\/+$/, '');
+  // Clear any pending reconnect and stale socket
+  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  if (haWs) { try { haWs.removeAllListeners(); haWs.close(); } catch(_) {} haWs = null; }
+
+  wsConnecting = true;
   const wsUrl = haUrl.replace(/^http/, 'ws') + '/api/websocket';
 
   log('[WS] Connecting to ' + wsUrl);
@@ -545,10 +578,12 @@ function connectNotifications() {
     haWs = new WebSocket(wsUrl, { rejectUnauthorized: false });
   } catch (e) {
     log('[WS] Error: ' + e.message);
+    wsConnecting = false;
     return;
   }
 
   haWs.on('open', () => {
+    wsConnecting = false;
     // Auth
     haWs.send(JSON.stringify({ type: 'auth', access_token: accessToken }));
     log('[WS] Connected');
@@ -624,12 +659,16 @@ function connectNotifications() {
   });
 
   haWs.on('close', () => {
+    haWs = null;
+    wsConnecting = false;
     log('[WS] Disconnected, reconnecting in 10s');
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
     wsReconnectTimer = setTimeout(connectNotifications, 10000);
   });
 
   haWs.on('error', (err) => {
     log('[WS] Error: ' + err.message);
+    wsConnecting = false;
   });
 }
 
