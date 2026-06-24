@@ -1,0 +1,72 @@
+{
+  "days": ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"],
+  "months": ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"],
+  
+  "settings": "Einstellungen",
+  "language": "🌐 Sprache",
+  
+  "sectionDisplay": "🖥️ Anzeige",
+  "brightness": "Helligkeit",
+  "monitor": "Monitor",
+  "nightSchedule": "🌙 Nachtplan",
+  "turnOffAt": "Ausschalten um",
+  "turnOnAt": "Einschalten um",
+  
+  "sectionAudio": "🔊 Audio",
+  "volume": "Lautstärke",
+  "mute": "Stumm",
+  "output": "Ausgang",
+  
+  "sectionNetwork": "📶 Netzwerk",
+  "sectionBluetooth": "📶 Bluetooth",
+  "bluetooth": "Bluetooth",
+  "notAvailable": "Nicht verfügbar",
+  "signal": "Signal",
+  "interface": "Schnittstelle",
+  
+  "sectionHardware": "🔧 Hardware",
+  "cpuGovernor": "CPU-Governor",
+  
+  "sectionDevice": "📊 Gerät",
+  "sensors": "Sensoren",
+  
+  "sectionNotifications": "🔔 Benachrichtigungen",
+  "notifications": "🔔 Benachrichtigungen",
+  "sound": "Ton",
+  "doNotDisturb": "🌙 Nicht stören",
+  "popupDuration": "Popup-Dauer",
+  "never": "Nie",
+  "melody": "Melodie",
+  "customSound": "🎵 Eigener Ton",
+  "selectPlaceholder": "-- auswählen --",
+  "soundFormats": "Formate: .wav, .ogg, .mp3, .flac — ",
+  "latestNotifications": "Letzte Benachrichtigungen",
+  "noNotifications": "Keine Benachrichtigungen",
+  "clear": "Löschen",
+  
+  "sectionChannels": "📡 Kanäle",
+  "channelsDesc": "Kanäle werden automatisch erstellt, wenn Home Assistant eine Benachrichtigung sendet mit ",
+  "noChannels": "Noch keine Kanäle.",
+  
+  "sectionUpdates": "🔄 Updates",
+  "updateError": "Update-Prüfung nicht möglich",
+  "updateAvailable": "🟢 Neue Version verfügbar!",
+  
+  "sectionActions": "⚙ Aktionen",
+  
+  "confirmReboot": "System neu starten?",
+  "confirmShutdown": "System herunterfahren?",
+  
+  "notifCount_one": "{{count}} Benachrichtigung",
+  "notifCount_other": "{{count}} Benachrichtigungen",
+  
+  "customLabel": "🎵 Eigene",
+  "noFilesFound": "Keine Dateien gefunden",
+  "noDevicesFound": "Keine Geräte gefunden",
+  "spaceKey": "Leerzeichen",
+  "scanning": "Suche...",
+  "scan": "Suchen",
+  "connect": "Verbinden",
+  "default": "Standard",
+  "secondsLabel": "Sek"
+}

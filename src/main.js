@@ -411,7 +411,7 @@ function loadDashboard() {
         // Inject i18n (must run before overlay)
         try {
           const localesDir = path.join(__dirname, 'locales');
-          const supportedLangs = ['it', 'en'];
+          const supportedLangs = ['it', 'en', 'de'];
           const locales = {};
           for (const lang of supportedLangs) {
             const filePath = path.join(localesDir, lang, 'translation.json');
@@ -1326,7 +1326,7 @@ ipcMain.handle('get-version', () => APP_VERSION);
 
 ipcMain.handle('get-locales', () => {
   const localesDir = path.join(__dirname, 'locales');
-  const supportedLangs = ['it', 'en'];
+  const supportedLangs = ['it', 'en', 'de'];
   const locales = {};
   for (const lang of supportedLangs) {
     const filePath = path.join(localesDir, lang, 'translation.json');
