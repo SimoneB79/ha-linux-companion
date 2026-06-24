@@ -408,12 +408,59 @@ function loadDashboard() {
           'hui-root { --sidebar-width: 0px !important; }'
         );
 
-        // Inject settings overlay
+        // Inject i18n (must run before overlay)
         try {
-          const overlayCode = fs.readFileSync(path.join(__dirname, 'views', 'overlay.js'), 'utf8');
-          mainWindow.webContents.executeJavaScript(overlayCode);
+          const localesDir = path.join(__dirname, 'locales');
+          const supportedLangs = ['it', 'en'];
+          const locales = {};
+          for (const lang of supportedLangs) {
+            const filePath = path.join(localesDir, lang, 'translation.json');
+            locales[lang] = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          }
+          const i18nCode = [
+            '(function() {',
+            '  var LOCALES = ' + JSON.stringify(locales) + ';',
+            '  var currentLang = localStorage.getItem("ha_lang") || "it";',
+            '  function t(key, params) {',
+            '    var langData = LOCALES[currentLang] || LOCALES["it"] || {};',
+            '    var text = langData[key] || key;',
+            '    for (var k in params) { text = text.replace("{{" + k + "}}", params[k]); }',
+            '    return text;',
+            '  }',
+            '  window.__haLocales = LOCALES;',
+            '  window.__haT = t;',
+            '})();'
+          ].join('\n');
+          mainWindow.webContents.executeJavaScript(i18nCode).then(() => {
+            log('[i18n] i18n injected successfully');
+
+            // Inject settings overlay (must run AFTER i18n)
+            try {
+              const overlayCode = fs.readFileSync(path.join(__dirname, 'views', 'overlay.js'), 'utf8');
+              mainWindow.webContents.executeJavaScript(overlayCode).then(() => {
+                log('[Overlay] Injected successfully');
+              }).catch(e => {
+                log('[Overlay] Error injecting: ' + e.message);
+              });
+            } catch (e) {
+              log('[Overlay] Error injecting: ' + e.message);
+            }
+          }).catch(e => {
+            log('[i18n] Error injecting: ' + e.message);
+            // Even if i18n fails, inject overlay
+            try {
+              const overlayCode = fs.readFileSync(path.join(__dirname, 'views', 'overlay.js'), 'utf8');
+              mainWindow.webContents.executeJavaScript(overlayCode).then(() => {
+                log('[Overlay] Injected successfully');
+              }).catch(e2 => {
+                log('[Overlay] Error injecting: ' + e2.message);
+              });
+            } catch (e2) {
+              log('[Overlay] Error injecting: ' + e2.message);
+            }
+          });
         } catch (e) {
-          log('[Overlay] Error injecting: ' + e.message);
+          log('[i18n] Error loading locales: ' + e.message);
         }
 
         // Inject toast notification overlay
@@ -1276,6 +1323,17 @@ ipcMain.handle('get-sensors', async () => {
 });
 
 ipcMain.handle('get-version', () => APP_VERSION);
+
+ipcMain.handle('get-locales', () => {
+  const localesDir = path.join(__dirname, 'locales');
+  const supportedLangs = ['it', 'en'];
+  const locales = {};
+  for (const lang of supportedLangs) {
+    const filePath = path.join(localesDir, lang, 'translation.json');
+    try { locales[lang] = JSON.parse(fs.readFileSync(filePath, 'utf8')); } catch (_) {}
+  }
+  return locales;
+});
 
 // ── Notification History ──
 const NOTIF_HISTORY_MAX = 50;

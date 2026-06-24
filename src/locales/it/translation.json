@@ -1,0 +1,72 @@
+{
+  "days": ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"],
+  "months": ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"],
+  
+  "settings": "Impostazioni",
+  "language": "🌐 Lingua",
+  
+  "sectionDisplay": "🖥️ Display",
+  "brightness": "Luminosità",
+  "monitor": "Monitor",
+  "nightSchedule": "🌙 Schedula notte",
+  "turnOffAt": "Spegni alle",
+  "turnOnAt": "Accendi alle",
+  
+  "sectionAudio": "🔊 Audio",
+  "volume": "Volume",
+  "mute": "Muto",
+  "output": "Uscita",
+  
+  "sectionNetwork": "📶 Rete",
+  "sectionBluetooth": "📶 Bluetooth",
+  "bluetooth": "Bluetooth",
+  "notAvailable": "Non disponibile",
+  "signal": "Segnale",
+  "interface": "Interfaccia",
+  
+  "sectionHardware": "🔧 Hardware",
+  "cpuGovernor": "CPU Governor",
+  
+  "sectionDevice": "📊 Dispositivo",
+  "sensors": "Sensori",
+  
+  "sectionNotifications": "🔔 Notifiche",
+  "notifications": "🔔 Notifiche",
+  "sound": "Suono",
+  "doNotDisturb": "🌙 Non disturbare",
+  "popupDuration": "Durata popup",
+  "never": "Mai",
+  "melody": "Melodia",
+  "customSound": "🎵 Suono personalizzato",
+  "selectPlaceholder": "-- seleziona --",
+  "soundFormats": "Formati: .wav, .ogg, .mp3, .flac — ",
+  "latestNotifications": "Ultime notifiche",
+  "noNotifications": "Nessuna notifica",
+  "clear": "Cancella",
+  
+  "sectionChannels": "📡 Canali",
+  "channelsDesc": "I canali si creano automaticamente quando Home Assistant invia una notifica con ",
+  "noChannels": "Nessun canale ancora.",
+  
+  "sectionUpdates": "🔄 Aggiornamenti",
+  "updateError": "Impossibile verificare aggiornamenti",
+  "updateAvailable": "🟢 Nuova versione disponibile!",
+  
+  "sectionActions": "⚙ Azioni",
+  
+  "confirmReboot": "Riavviare il sistema?",
+  "confirmShutdown": "Spegnere il sistema?",
+  
+  "notifCount_one": "{{count}} notifica",
+  "notifCount_other": "{{count}} notifiche",
+  
+  "customLabel": "🎵 Personalizzata",
+  "noFilesFound": "Nessun file trovato",
+  "noDevicesFound": "Nessun dispositivo trovato",
+  "spaceKey": "spazio",
+  "scanning": "Scansione...",
+  "scan": "Scan",
+  "connect": "Connect",
+  "default": "Default",
+  "secondsLabel": "sec"
+}

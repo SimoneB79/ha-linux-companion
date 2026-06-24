@@ -64,9 +64,49 @@
   `;
   document.head.appendChild(style);
 
-  // Clock
+  // ── i18n Setup ──
+  let currentLang = 'it';
+  let LOCALES = {};
+  
+  function loadLocales() {
+    if (window.__haLocales) {
+      LOCALES = window.__haLocales;
+    } else if (window.haCompanion && window.haCompanion.getLocales) {
+      window.haCompanion.getLocales().then(locs => { LOCALES = locs; });
+    }
+  }
+  
+  function t(key, params = {}) {
+    const langData = LOCALES[currentLang] || LOCALES['it'] || {};
+    let text = langData[key] || key;
+    for (const [k, v] of Object.entries(params)) {
+      text = text.replace('{{' + k + '}}', v);
+    }
+    return text;
+  }
+  
+  function changeLang(lang) {
+    if (!LOCALES[lang]) return;
+    currentLang = lang;
+    localStorage.setItem('ha_lang', lang);
+    location.reload();
+  }
+  
+  loadLocales();
+  const savedLang = localStorage.getItem('ha_lang');
+  if (savedLang && LOCALES[savedLang]) currentLang = savedLang;
+
+  // Clock (will be overridden by i18n days/months)
   const dayNames = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
   const monthNames = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+  // Apply i18n days/months if available
+  if (LOCALES[currentLang] && LOCALES[currentLang].days) {
+    dayNames.splice(0, 7, ...LOCALES[currentLang].days);
+  }
+  if (LOCALES[currentLang] && LOCALES[currentLang].months) {
+    monthNames.splice(0, 12, ...LOCALES[currentLang].months);
+  }
 
   // ── Kiosk Top Bar ──
   const topbar = document.createElement('div');
@@ -145,62 +185,65 @@
   panel.id = 'ha-comp-panel';
   panel.innerHTML = `
     <div class="comp-header"><span class="comp-header-title">HA Linux Companion</span><button class="comp-close-panel" id="comp-close">✕</button></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2C2C2E">
+      <select class="comp-select" id="comp-lang-select" style="flex:1;max-width:140px;padding:4px 8px;font-size:12px"></select>
+    </div>
     <div style="display:flex;align-items:center;gap:12px;padding:8px 0;margin-bottom:4px;border-bottom:1px solid #2C2C2E" id="comp-clock-bar">
       <span style="font-size:18px;font-weight:700" class="clock-time">--:--:--</span>
       <span style="font-size:11px;color:#ABABAB" class="clock-date">--</span>
     </div>
     <div class="comp-version" id="comp-version">v1.0.0</div>
 
-    <h3>🖥️ Display</h3>
-    <div class="comp-row" id="comp-brightness-row"><div class="comp-label">Brightness</div><div style="display:flex;align-items:center;gap:8px"><input type="range" class="comp-slider" id="comp-brightness" min="10" max="100" value="100"><span class="comp-val" id="comp-brightness-val">100%</span></div></div>
-    <div class="comp-row"><div class="comp-label">Monitor</div><div style="display:flex;gap:6px"><button class="comp-btn primary" id="comp-display-on" style="padding:6px 12px;font-size:12px">ON</button><button class="comp-btn secondary" id="comp-display-off" style="padding:6px 12px;font-size:12px">OFF</button></div></div>
-    <div class="comp-row"><div class="comp-label">🌙 Schedula notte</div><button class="comp-toggle" id="comp-schedule-enabled"></button></div>
+    <h3>${t('sectionDisplay')}</h3>
+    <div class="comp-row" id="comp-brightness-row"><div class="comp-label">${t('brightness')}</div><div style="display:flex;align-items:center;gap:8px"><input type="range" class="comp-slider" id="comp-brightness" min="10" max="100" value="100"><span class="comp-val" id="comp-brightness-val">100%</span></div></div>
+    <div class="comp-row"><div class="comp-label">${t('monitor')}</div><div style="display:flex;gap:6px"><button class="comp-btn primary" id="comp-display-on" style="padding:6px 12px;font-size:12px">ON</button><button class="comp-btn secondary" id="comp-display-off" style="padding:6px 12px;font-size:12px">OFF</button></div></div>
+    <div class="comp-row"><div class="comp-label">${t('nightSchedule')}</div><button class="comp-toggle" id="comp-schedule-enabled"></button></div>
     <div id="comp-schedule-times" style="display:none;padding:6px 0">
-      <div class="comp-row"><div class="comp-label">Spegni alle</div><input type="time" class="comp-input" id="comp-schedule-off" value="23:00"></div>
-      <div class="comp-row"><div class="comp-label">Accendi alle</div><input type="time" class="comp-input" id="comp-schedule-on" value="07:00"></div>
+      <div class="comp-row"><div class="comp-label">${t('turnOffAt')}</div><input type="time" class="comp-input" id="comp-schedule-off" value="23:00"></div>
+      <div class="comp-row"><div class="comp-label">${t('turnOnAt')}</div><input type="time" class="comp-input" id="comp-schedule-on" value="07:00"></div>
     </div>
 
-    <h3>🔊 Audio</h3>
-    <div class="comp-row"><div class="comp-label">Volume</div><div style="display:flex;align-items:center;gap:8px"><input type="range" class="comp-slider" id="comp-volume" min="0" max="100" value="50"><span class="comp-val" id="comp-volume-val">50%</span></div></div>
-    <div class="comp-row"><div class="comp-label">Mute</div><button class="comp-btn secondary" id="comp-mute">Off</button></div>
-    <div class="comp-row"><div class="comp-label">Output</div><select class="comp-select" id="comp-audio-output"></select></div>
+    <h3>${t('sectionAudio')}</h3>
+    <div class="comp-row"><div class="comp-label">${t('volume')}</div><div style="display:flex;align-items:center;gap:8px"><input type="range" class="comp-slider" id="comp-volume" min="0" max="100" value="50"><span class="comp-val" id="comp-volume-val">50%</span></div></div>
+    <div class="comp-row"><div class="comp-label">${t('mute')}</div><button class="comp-btn secondary" id="comp-mute">Off</button></div>
+    <div class="comp-row"><div class="comp-label">${t('output')}</div><select class="comp-select" id="comp-audio-output"></select></div>
 
-    <h3>📶 Network</h3>
+    <h3>${t('sectionNetwork')}</h3>
     <div id="comp-network-info" class="comp-info-grid"></div>
 
-    <h3>📶 Bluetooth</h3>
-    <div class="comp-row"><div class="comp-label">Bluetooth</div><button class="comp-btn secondary" id="comp-bt-toggle">Scan</button></div>
+    <h3>${t('sectionBluetooth')}</h3>
+    <div class="comp-row"><div class="comp-label">${t('bluetooth')}</div><button class="comp-btn secondary" id="comp-bt-toggle">${t('scan')}</button></div>
     <div id="comp-bt-list"></div>
 
-    <h3>🔧 Hardware</h3>
+    <h3>${t('sectionHardware')}</h3>
     <div id="comp-hw-info" class="comp-info-grid"></div>
-    <div class="comp-row" style="margin-top:8px"><div class="comp-label">CPU Governor</div><select class="comp-select" id="comp-governor"><option value="ondemand">Ondemand</option><option value="performance">Performance</option><option value="powersave">Powersave</option><option value="conservative">Conservative</option><option value="schedutil">Schedutil</option></select></div>
+    <div class="comp-row" style="margin-top:8px"><div class="comp-label">${t('cpuGovernor')}</div><select class="comp-select" id="comp-governor"><option value="ondemand">Ondemand</option><option value="performance">Performance</option><option value="powersave">Powersave</option><option value="conservative">Conservative</option><option value="schedutil">Schedutil</option></select></div>
 
-    <h3>📊 Device</h3>
-    <div class="comp-row"><div><div class="comp-label" id="comp-device-name">Panel</div><div class="comp-sub" id="comp-sensor-info">Sensors: --</div></div></div>
+    <h3>${t('sectionDevice')}</h3>
+    <div class="comp-row"><div><div class="comp-label" id="comp-device-name">Panel</div><div class="comp-sub" id="comp-sensor-info">${t('sensors')}: --</div></div></div>
 
-    <h3>🔔 Notifications</h3>
-    <div class="comp-notif-row"><div class="comp-label">🔔 Notifiche</div><button class="comp-toggle" id="comp-notif-enabled"></button></div>
-    <div class="comp-notif-row"><div class="comp-label">Suono</div><button class="comp-toggle on" id="comp-notif-sound"></button></div>
-    <div class="comp-notif-row"><div class="comp-label">🌙 Non disturbare</div><button class="comp-toggle" id="comp-notif-dnd"></button></div>
-    <div class="comp-notif-row"><div class="comp-label">Durata popup</div><select class="comp-select" id="comp-notif-duration"><option value="4000">4 sec</option><option value="6000" selected>6 sec</option><option value="10000">10 sec</option><option value="0">Mai</option></select></div>
-    <div class="comp-notif-row"><div class="comp-label">Melodia</div><select class="comp-select" id="comp-notif-melody"><option value="default">Default</option><option value="success">Success</option><option value="warning">Warning</option><option value="error">Error</option></select></div>
+    <h3>${t('sectionNotifications')}</h3>
+    <div class="comp-notif-row"><div class="comp-label">${t('notifications')}</div><button class="comp-toggle" id="comp-notif-enabled"></button></div>
+    <div class="comp-notif-row"><div class="comp-label">${t('sound')}</div><button class="comp-toggle on" id="comp-notif-sound"></button></div>
+    <div class="comp-notif-row"><div class="comp-label">${t('doNotDisturb')}</div><button class="comp-toggle" id="comp-notif-dnd"></button></div>
+    <div class="comp-notif-row"><div class="comp-label">${t('popupDuration')}</div><select class="comp-select" id="comp-notif-duration"><option value="4000">4 ${t('secondsLabel')}</option><option value="6000" selected>6 ${t('secondsLabel')}</option><option value="10000">10 ${t('secondsLabel')}</option><option value="0">${t('never')}</option></select></div>
+    <div class="comp-notif-row"><div class="comp-label">${t('melody')}</div><select class="comp-select" id="comp-notif-melody"><option value="default">Default</option><option value="success">Success</option><option value="warning">Warning</option><option value="error">Error</option></select></div>
     <div id="comp-custom-sounds" style="display:none">
-      <div class="comp-notif-row"><div class="comp-label">🎵 Suono personalizzato</div><select class="comp-select" id="comp-notif-custom"><option value="">-- seleziona --</option></select></div>
-      <div class="comp-section-desc">Formati: .wav, .ogg, .mp3, .flac — <code style="color:#64D2FF;font-size:10px">~/.config/ha-linux-companion/sounds/</code></div>
+      <div class="comp-notif-row"><div class="comp-label">${t('customSound')}</div><select class="comp-select" id="comp-notif-custom"><option value="">${t('selectPlaceholder')}</option></select></div>
+      <div class="comp-section-desc">${t('soundFormats')}<code style="color:#64D2FF;font-size:10px">~/.config/ha-linux-companion/sounds/</code></div>
     </div>
-    <div class="comp-section-desc">Ultime notifiche</div>
-    <div class="comp-row"><div class="comp-label" id="comp-notif-count">Nessuna notifica</div><button class="comp-btn secondary" id="comp-notif-clear">Cancella</button></div>
+    <div class="comp-section-desc">${t('latestNotifications')}</div>
+    <div class="comp-row"><div class="comp-label" id="comp-notif-count">${t('noNotifications')}</div><button class="comp-btn secondary" id="comp-notif-clear">${t('clear')}</button></div>
     <div id="comp-notif-list" style="max-height:200px;overflow-y:auto;"></div>
 
-    <h3>📡 Canali</h3>
-    <div class="comp-section-desc" id="comp-channels-desc">I canali si creano automaticamente quando Home Assistant invia una notifica con <code style="color:#64D2FF">data.channel</code>.</div>
+    <h3>${t('sectionChannels')}</h3>
+    <div class="comp-section-desc" id="comp-channels-desc">${t('channelsDesc')}<code style="color:#64D2FF">data.channel</code>.</div>
     <div id="comp-channels-list"></div>
 
-    <h3>🔄 Updates</h3>
+    <h3>${t('sectionUpdates')}</h3>
     <div id="comp-update-info"></div>
 
-    <h3>⚙ Actions</h3>
+    <h3>${t('sectionActions')}</h3>
     <div class="comp-row"><button class="comp-btn secondary" id="comp-refresh">🔄 Reload</button></div>
     <div class="comp-row"><button class="comp-btn secondary" id="comp-fullscreen">⛶ Fullscreen</button></div>
     <div class="comp-row"><button class="comp-btn warning" id="comp-reboot">🔄 Reboot System</button></div>
@@ -222,6 +265,34 @@
   document.getElementById('ha-comp-topbar-btn').addEventListener('click', function(e) { e.stopImmediatePropagation(); togglePanel(); }, true);
   backdrop.addEventListener('click', togglePanel);
   document.getElementById('comp-close').addEventListener('click', togglePanel);
+
+  // Language selector
+  const langSelect = document.getElementById('comp-lang-select');
+  function initLangSelector() {
+    if (!langSelect) return;
+    Object.keys(LOCALES).forEach(lang => {
+      const opt = document.createElement('option');
+      opt.value = lang;
+      opt.textContent = lang.toUpperCase();
+      opt.selected = (lang === currentLang);
+      langSelect.appendChild(opt);
+    });
+    langSelect.addEventListener('change', function() {
+      changeLang(langSelect.value);
+    });
+  }
+  if (LOCALES[currentLang]) {
+    initLangSelector();
+  } else {
+    // Wait for locales to load
+    const checkLocales = setInterval(() => {
+      if (LOCALES[currentLang]) {
+        clearInterval(checkLocales);
+        initLangSelector();
+      }
+    }, 100);
+    setTimeout(() => clearInterval(checkLocales), 3000);
+  }
   // Swipe from right edge to open panel
   var swipeStartX = 0, swipeActive = false;
   document.addEventListener('touchstart', function(e) {
@@ -309,15 +380,15 @@
   function loadNetworkInfo() {
     ipc('getNetworkInfo').then(function(n) {
       var el = document.getElementById('comp-network-info');
-      if (!n) { el.innerHTML = '<div style="color:#636366;font-size:12px">Non disponibile</div>'; return; }
+      if (!n) { el.innerHTML = '<div style="color:#636366;font-size:12px">' + t('notAvailable') + '</div>'; return; }
       var html = '';
       if (n.ssid) {
         html += '<div class="comp-info-item"><div class="comp-info-label">WiFi</div><div class="comp-info-value">' + n.ssid + '</div></div>';
-        html += '<div class="comp-info-item"><div class="comp-info-label">Segnale</div><div class="comp-info-value">' + (n.signalPercent !== null ? n.signalPercent + '% (' + n.signalDbm + ' dBm)' : '--') + '</div></div>';
+        html += '<div class="comp-info-item"><div class="comp-info-label">' + t('signal') + '</div><div class="comp-info-value">' + (n.signalPercent !== null ? n.signalPercent + '% (' + n.signalDbm + ' dBm)' : '--') + '</div></div>';
       }
       html += '<div class="comp-info-item"><div class="comp-info-label">IP</div><div class="comp-info-value">' + (n.ipAddress || '--') + '</div></div>';
       html += '<div class="comp-info-item"><div class="comp-info-label">Gateway</div><div class="comp-info-value">' + (n.gateway || '--') + '</div></div>';
-      html += '<div class="comp-info-item"><div class="comp-info-label">Interfaccia</div><div class="comp-info-value">' + (n.interface || '--') + '</div></div>';
+      html += '<div class="comp-info-item"><div class="comp-info-label">' + t('interface') + '</div><div class="comp-info-value">' + (n.interface || '--') + '</div></div>';
       html += '<div class="comp-info-item"><div class="comp-info-label">DNS</div><div class="comp-info-value">' + (n.dns || '--') + '</div></div>';
       el.innerHTML = html;
     });
@@ -326,18 +397,18 @@
   // ── Bluetooth ──
   var btBtn = document.getElementById('comp-bt-toggle'), btList = document.getElementById('comp-bt-list');
   btBtn.addEventListener('click', async () => {
-    btBtn.textContent = 'Scanning...'; btBtn.disabled = true;
+    btBtn.textContent = t('scanning'); btBtn.disabled = true;
     const devices = await ipc('bluetoothScan');
-    btBtn.textContent = 'Scan'; btBtn.disabled = false;
+    btBtn.textContent = t('scan'); btBtn.disabled = false;
     btList.innerHTML = '';
     if (devices && devices.length) {
       devices.forEach(d => {
         const item = document.createElement('div'); item.className = 'comp-bt-item';
-        item.innerHTML = '<span>' + d.name + '</span><button class="comp-btn secondary comp-bt-connect" data-mac="' + d.mac + '">Connect</button>';
+        item.innerHTML = '<span>' + d.name + '</span><button class="comp-btn secondary comp-bt-connect" data-mac="' + d.mac + '">' + t('connect') + '</button>';
         btList.appendChild(item);
       });
       btList.querySelectorAll('.comp-bt-connect').forEach(btn => btn.addEventListener('click', async () => { btn.textContent = '...'; await ipc('bluetoothConnect', btn.dataset.mac); btn.textContent = '✓'; }));
-    } else btList.innerHTML = '<div style="color:#8E8E93;font-size:12px">No devices found</div>';
+    } else btList.innerHTML = '<div style="color:#8E8E93;font-size:12px">' + t('noDevicesFound') + '</div>';
   });
 
   // ── Hardware Info ──
@@ -384,17 +455,17 @@
 
   // ── System Power ──
   document.getElementById('comp-reboot').addEventListener('click', function() {
-    if (confirm('Riavviare il sistema?')) ipc('rebootSystem');
+    if (confirm(t('confirmReboot'))) ipc('rebootSystem');
   });
   document.getElementById('comp-shutdown').addEventListener('click', function() {
-    if (confirm('Spegnere il sistema?')) ipc('shutdownSystem');
+    if (confirm(t('confirmShutdown'))) ipc('shutdownSystem');
   });
 
   // ── Updates ──
   function loadUpdateInfo() {
     ipc('checkUpdates').then(function(u) {
       var el = document.getElementById('comp-update-info');
-      if (!u || u.error) { el.innerHTML = '<div style="color:#636366;font-size:12px">Impossibile verificare aggiornamenti</div>'; return; }
+      if (!u || u.error) { el.innerHTML = '<div style="color:#636366;font-size:12px">' + t('updateError') + '</div>'; return; }
       var html = '<div class="comp-update-row">';
       html += '<span class="comp-update-badge current">v' + u.current + '</span>';
       html += '<div style="flex:1">';
@@ -407,7 +478,7 @@
       html += '</div></div>';
       // Show if update available
       if (u.latestStable && u.latestStable.tag !== 'v' + u.current && u.latestStable.tag > 'v' + u.current) {
-        html += '<div style="color:#30D158;font-size:12px;margin-top:4px">🟢 Nuova versione disponibile!</div>';
+        html += '<div style="color:#30D158;font-size:12px;margin-top:4px">' + t('updateAvailable') + '</div>';
       }
       el.innerHTML = html;
     });
@@ -424,7 +495,7 @@
   var notifCount = document.getElementById('comp-notif-count');
   function renderNotifHistory(history) {
     if (!history || !history.length) {
-      notifCount.textContent = 'Nessuna notifica';
+      notifCount.textContent = t('noNotifications');
       notifList.innerHTML = '';
       return;
     }
