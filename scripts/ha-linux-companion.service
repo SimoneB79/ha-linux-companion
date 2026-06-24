@@ -1,0 +1,19 @@
+[Unit]
+Description=HA Linux Companion (Electron)
+After=network-online.target avahi-daemon.service systemd-user-sessions.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=sb
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
+WorkingDirectory=REPLACE_WORKDIR
+ExecStartPre=/bin/bash -c 'for i in 1 2 3 4 5 6 7 8 9 10; do getent hosts ha.lan && break; sleep 2; done'
+ExecStart=REPLACE_WORKDIR/node_modules/electron/dist/electron . --no-sandbox --disable-gpu-sandbox --disable-gpu --enable-features=UseOzonePlatform --ozone-platform=wayland
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
