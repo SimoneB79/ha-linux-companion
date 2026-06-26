@@ -124,31 +124,58 @@
   `;
   document.body.appendChild(topbar);
 
-  // Auto-hide bar after 5s of inactivity, reveal on top-edge touch/mouse
+  // Auto-hide bar: touch-scroll DOWN (finger up) shows, UP (finger down) hides.
+  // Falls back to 5s timeout when not scrolling. Tap/swipe near top always reveals.
   let barHideTimer = null;
   let barPinned = false;
+  let touchScrollDelta = 0;
+  let lastTouchY = 0;
+
   function scheduleBarHide() {
     if (barPinned) return;
     clearTimeout(barHideTimer);
     barHideTimer = setTimeout(function() { if (!open) topbar.classList.add('hidden'); }, 5000);
   }
   function revealBar() { topbar.classList.remove('hidden'); scheduleBarHide(); }
+  function hideBar() { if (!open && !barPinned) topbar.classList.add('hidden'); }
+
   topbar.addEventListener('mouseenter', function() { clearTimeout(barHideTimer); topbar.classList.remove('hidden'); });
   topbar.addEventListener('mouseleave', function() { scheduleBarHide(); });
-  // Touch: reveal on swipe-down from top edge (most reliable on touchscreens)
-  let touchStartY = 0;
-  document.addEventListener('touchstart', function(e) {
-    touchStartY = e.touches[0].clientY;
-    // Tap near top also reveals
-    if (touchStartY < 60) revealBar();
-  }, { passive: true });
-  document.addEventListener('touchmove', function(e) {
-    // Swipe down from top 30px reveals the bar
-    if (touchStartY < 30 && e.touches[0].clientY - touchStartY > 20) {
+
+  // Touch-scroll based show/hide (use capture to intercept before HA's own handlers)
+  window.addEventListener('touchstart', function(e) {
+    lastTouchY = e.touches[0].clientY;
+    touchScrollDelta = 0;
+    if (lastTouchY < 60) revealBar();
+  }, { capture: true, passive: true });
+
+  window.addEventListener('touchmove', function(e) {
+    const curY = e.touches[0].clientY;
+    // Finger UP (page scrolls down) = positive delta → hide bar
+    // Finger DOWN (page scrolls up) = negative delta → show bar
+    touchScrollDelta += (lastTouchY - curY);
+    lastTouchY = curY;
+    if (touchScrollDelta > 40) {
+      hideBar();
+      touchScrollDelta = 0;
+    } else if (touchScrollDelta < -40) {
       revealBar();
-      e.preventDefault(); // prevent HA from scrolling
+      touchScrollDelta = 0;
     }
-  }, { passive: false });
+  }, { capture: true, passive: true });
+
+  // Wheel (mouse/trackpad) scroll detection
+  window.addEventListener('wheel', function(e) {
+    if (e.deltaY > 10) {
+      // Scrolling down → hide bar
+      hideBar();
+    } else if (e.deltaY < -10) {
+      // Scrolling up → show bar
+      revealBar();
+    }
+  }, { capture: true, passive: true });
+
+  // Mouse near top always reveals
   document.addEventListener('mousemove', function(e) {
     if (e.clientY < 15) revealBar();
   });
@@ -503,122 +530,3 @@
     notifList.innerHTML = history.map(function(n) {
       var d = new Date(n.time);
       var ts = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
-      return '<div style="padding:8px 0;border-bottom:1px solid #2C2C2E"><div style="font-size:13px;font-weight:600">' + n.title + ' <span style="color:#636366;font-size:11px">' + ts + '</span></div><div style="color:#ABABAB;font-size:12px;margin-top:2px">' + n.message + '</div></div>';
-    }).join('');
-  }
-  document.getElementById('comp-notif-clear').addEventListener('click', function() {
-    notifList.innerHTML = '';
-    notifCount.textContent = 'Nessuna notifica';
-  });
-
-  // ── Notification settings ──
-  var notifEnabledBtn = document.getElementById('comp-notif-enabled');
-  var notifSoundBtn = document.getElementById('comp-notif-sound');
-  var notifDndBtn = document.getElementById('comp-notif-dnd');
-  var notifDuration = document.getElementById('comp-notif-duration');
-  var notifMelody = document.getElementById('comp-notif-melody');
-
-  var notifSettings = JSON.parse(localStorage.getItem('ha_notif_settings') || '{}');
-  if (notifSettings.enabled === false) notifEnabledBtn.classList.remove('on'); else notifEnabledBtn.classList.add('on');
-  if (notifSettings.sound === false) notifSoundBtn.classList.remove('on'); else notifSoundBtn.classList.add('on');
-  if (notifSettings.dnd) notifDndBtn.classList.add('on'); else notifDndBtn.classList.remove('on');
-  if (notifSettings.duration) notifDuration.value = notifSettings.duration;
-  if (notifSettings.melody) notifMelody.value = notifSettings.melody;
-
-  function saveNotifSettings() { localStorage.setItem('ha_notif_settings', JSON.stringify(notifSettings)); }
-
-  notifEnabledBtn.addEventListener('click', function() { notifSettings.enabled = !notifEnabledBtn.classList.contains('on'); notifEnabledBtn.classList.toggle('on'); saveNotifSettings(); });
-  notifSoundBtn.addEventListener('click', function() { notifSettings.sound = !notifSoundBtn.classList.contains('on'); notifSoundBtn.classList.toggle('on'); saveNotifSettings(); if (notifSettings.sound) ipc('playNotificationSound', notifMelody.value); });
-  notifDndBtn.addEventListener('click', function() { notifSettings.dnd = !notifDndBtn.classList.contains('on'); notifDndBtn.classList.toggle('on'); saveNotifSettings(); });
-  notifDuration.addEventListener('change', function() { notifSettings.duration = parseInt(notifDuration.value); saveNotifSettings(); });
-  notifMelody.addEventListener('change', function() { notifSettings.melody = notifMelody.value; saveNotifSettings(); ipc('playNotificationSound', notifMelody.value); });
-
-  // Custom sounds
-  var customSection = document.getElementById('comp-custom-sounds');
-  var customSelect = document.getElementById('comp-notif-custom');
-  var customOpt = document.createElement('option'); customOpt.value = '__custom__'; customOpt.textContent = '🎵 Personalizzata'; notifMelody.appendChild(customOpt);
-  if (notifSettings.melody && notifSettings.melody.startsWith('custom:')) { notifMelody.value = '__custom__'; customSection.style.display = 'block'; }
-  notifMelody.addEventListener('change', function() {
-    if (notifMelody.value === '__custom__') {
-      customSection.style.display = 'block';
-      ipc('listCustomSounds').then(function(sounds) {
-        customSelect.innerHTML = '<option value="">-- seleziona --</option>';
-        if (sounds && sounds.length) { sounds.forEach(function(s) { var o = document.createElement('option'); o.value = 'custom:' + s.file; o.textContent = s.name; customSelect.appendChild(o); }); if (notifSettings.melody) customSelect.value = notifSettings.melody; }
-        else customSelect.innerHTML = '<option value="">Nessun file trovato</option>';
-      });
-    } else { customSection.style.display = 'none'; notifSettings.customSound = null; }
-  });
-  customSelect.addEventListener('change', function() { if (customSelect.value) { notifSettings.melody = customSelect.value; saveNotifSettings(); ipc('playNotificationSound', customSelect.value); } });
-
-  // ── Channels ──
-  var channelsList = document.getElementById('comp-channels-list');
-  function renderChannels(chs) {
-    if (!chs || !Object.keys(chs).length) { channelsList.innerHTML = '<div style="color:#636366;font-size:12px;padding:8px 0">Nessun canale ancora.</div>'; return; }
-    var html = '';
-    for (var id in chs) {
-      var ch = chs[id];
-      html += '<div class="comp-notif-row" style="flex-direction:column;align-items:stretch;padding:10px 0;gap:6px">';
-      html += '<div style="display:flex;align-items:center;justify-content:space-between">';
-      html += '<div><span style="font-weight:600;font-size:13px">' + (ch.name || id) + '</span><span style="color:#636366;font-size:11px;margin-left:6px">' + id + '</span></div>';
-      html += '<div style="display:flex;gap:8px;align-items:center">';
-      html += '<button class="comp-toggle' + (ch.enabled !== false ? ' on' : '') + '" data-channel="' + id + '" data-field="enabled"></button>';
-      html += '<button class="comp-btn danger" style="padding:4px 10px;font-size:11px" data-delete-channel="' + id + '">✕</button>';
-      html += '</div></div>';
-      html += '<div style="display:flex;gap:8px;align-items:center">';
-      html += '<select class="comp-select" data-channel="' + id + '" data-field="sound" style="flex:1">';
-      ['default','success','warning','error'].forEach(function(s) { html += '<option value="' + s + '"' + (ch.sound === s ? ' selected' : '') + '>' + s.charAt(0).toUpperCase() + s.slice(1) + '</option>'; });
-      html += '</select>';
-      html += '<select class="comp-select" data-channel="' + id + '" data-field="priority" style="flex:1">';
-      ['urgent','high','default','low','min'].forEach(function(p) { html += '<option value="' + p + '"' + (ch.priority === p ? ' selected' : '') + '>' + p.charAt(0).toUpperCase() + p.slice(1) + '</option>'; });
-      html += '</select></div></div>';
-    }
-    channelsList.innerHTML = html;
-    channelsList.querySelectorAll('[data-field="enabled"]').forEach(function(btn) { btn.addEventListener('click', function() { btn.classList.toggle('on'); ipc('updateChannel', btn.dataset.channel, { enabled: btn.classList.contains('on') }); }); });
-    channelsList.querySelectorAll('[data-field="sound"]').forEach(function(sel) { sel.addEventListener('change', function() { ipc('updateChannel', sel.dataset.channel, { sound: sel.value }); ipc('playNotificationSound', sel.value); }); });
-    channelsList.querySelectorAll('[data-field="priority"]').forEach(function(sel) { sel.addEventListener('change', function() { ipc('updateChannel', sel.dataset.channel, { priority: sel.value }); }); });
-    channelsList.querySelectorAll('[data-delete-channel"]').forEach(function(btn) { btn.addEventListener('click', function() { ipc('deleteChannel', btn.dataset.deleteChannel).then(function() { loadAndRenderChannels(); }); }); });
-  }
-  function loadAndRenderChannels() { ipc('getChannels').then(renderChannels); }
-  window.__haChannels = { refresh: loadAndRenderChannels };
-
-  // Clock element reference (panel detail clock with seconds)
-  var clockEl = document.getElementById('comp-clock-bar');
-  function updatePanelClock() {
-    if (!clockEl) return;
-    const now = new Date();
-    const hh = now.getHours().toString().padStart(2,'0');
-    const mm = now.getMinutes().toString().padStart(2,'0');
-    const ss = now.getSeconds().toString().padStart(2,'0');
-    var ct = clockEl.querySelector('.clock-time');
-    if (ct) ct.textContent = hh + ':' + mm + ':' + ss;
-    var cd = clockEl.querySelector('.clock-date');
-    if (cd) cd.textContent = dayNames[now.getDay()] + ' ' + now.getDate() + ' ' + monthNames[now.getMonth()];
-  }
-  setInterval(updatePanelClock, 1000);
-  updatePanelClock();
-
-  // Clock temp in panel
-  function updateClockTemp() {
-    if (!clockEl) return;
-    ipc('getHardwareInfo').then(function(hw) {
-      if (hw && hw.cpuTempC) {
-        var ct = clockEl.querySelector('.clock-temp');
-        if (!ct) { ct = document.createElement('span'); ct.className = 'clock-temp'; ct.style.cssText = 'font-size:12px;color:#FF9500'; clockEl.appendChild(ct); }
-        ct.textContent = hw.cpuTempC + '°C';
-      }
-    });
-  }
-  setInterval(updateClockTemp, 30000);
-  setTimeout(updateClockTemp, 2000);
-
-  // ── Init ──
-  ipc('getSystemInfo').then(info => {
-    if (!info) return;
-    if (info.volume !== undefined) { volSlider.value = info.volume; volVal.textContent = info.volume + '%'; }
-    if (info.brightness !== undefined) { brightSlider.value = info.brightness; brightVal.textContent = info.brightness + '%'; }
-    if (info.deviceName) { document.getElementById('comp-device-name').textContent = info.deviceName; var td = document.getElementById('topbar-device'); if (td) td.textContent = info.deviceName; }
-    if (info.version) document.getElementById('comp-version').textContent = info.version;
-    if (info.sensors) document.getElementById('comp-sensor-info').textContent = 'Sensors: ' + info.sensors;
-    if (!info.hasBacklight) { var br = document.getElementById('comp-brightness-row'); if(br) br.style.display='none'; }
-  });
-})();
