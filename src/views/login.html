@@ -125,7 +125,7 @@
       <button class="kb-b dot-btn" data-k=":">:</button>
       <button class="kb-b arr-btn" data-special="left">◄</button>
       <button class="kb-b arr-btn" data-special="right">►</button>
-      <button class="kb-b space-btn" data-special="space">${locale === 'it' ? 'spazio' : 'space'}</button>
+      <button class="kb-b space-btn" data-special="space">spazio</button>
       <button class="kb-b enter-btn" data-special="enter">↵</button>
       <button class="kb-b close-btn" data-special="close">▼</button>
     </div>
@@ -182,6 +182,12 @@
     kb.addEventListener('mousedown', e => e.preventDefault());
     document.addEventListener('focusin', (e) => { if (e.target.tagName === 'INPUT') { activeInput = e.target; kb.classList.add('visible'); } });
     window.haCompanion.getVersion().then(v => { const d = document.createElement('div'); d.style.cssText = 'text-align:center;margin-top:12px;font-size:11px;color:#636366'; d.textContent = 'v' + v; document.querySelector('.container').appendChild(d); });
+    // Set keyboard space bar label based on stored language
+    try {
+      const lang = localStorage.getItem('ha_lang') || 'it';
+      const spaceBtn = document.querySelector('.space-btn[data-special="space"]');
+      if (spaceBtn) spaceBtn.textContent = lang === 'it' ? 'spazio' : 'space';
+    } catch (_) {}
   </script>
 </body>
 </html>
