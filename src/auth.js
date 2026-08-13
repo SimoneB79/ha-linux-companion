@@ -25,6 +25,8 @@ const REFRESH_SKEW_MS = 5 * 60 * 1000;
 
 let authInstance = null;
 let refreshTimer = null;
+let refreshFailCount = 0;
+const MAX_REFRESH_FAILURES = 3;
 let logFn = console.log;
 
 function setLogger(fn) {
@@ -153,12 +155,27 @@ async function doRefresh() {
     }
     
     log('[AUTH] Token refreshed successfully');
+    refreshFailCount = 0;
   } catch (err) {
-    // CRITICAL: do NOT wipe config on refresh failure
-    // The refresh token is still valid, we'll retry later
     log('[AUTH] Token refresh failed: ' + err.message);
-    
-    // Retry in 30 seconds
+
+    // If refresh token is revoked/invalid (400), stop retrying — require re-login
+    if (err.message && err.message.includes('400')) {
+      log('[AUTH] Refresh token appears revoked — stopping refresh attempts. Re-login required.');
+      refreshFailCount = 0;
+      refreshTimer = null;
+      return;
+    }
+
+    // For transient errors, retry with backoff (max 3 attempts)
+    refreshFailCount++;
+    if (refreshFailCount > MAX_REFRESH_FAILURES) {
+      log(`[AUTH] Max refresh failures (${MAX_REFRESH_FAILURES}) reached — stopping.`);
+      refreshFailCount = 0;
+      refreshTimer = null;
+      return;
+    }
+    log(`[AUTH] Retrying refresh in 30s (attempt ${refreshFailCount}/${MAX_REFRESH_FAILURES})`);
     refreshTimer = setTimeout(doRefresh, 30000);
   }
 }
