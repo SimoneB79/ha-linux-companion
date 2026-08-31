@@ -413,11 +413,76 @@ function loadDashboard() {
       mainWindow.webContents.on('did-finish-load', function onLoad() {
         if (dashboardLoaded) return;
         dashboardLoaded = true;
-        mainWindow.webContents.removeListener('did-finish-load', onLoad);
         mainWindow.webContents.insertCSS(
+          // Base: hide sidebar on kiosk panels
           'ha-sidebar { display: none !important; } ' +
           'hui-root { --sidebar-width: 0px !important; }'
         );
+
+        // Responsive compact layout for small panels (e.g. 7" 800x480).
+        // webContents.insertCSS does NOT pierce HA shadow DOM, so we inject a
+        // <style> into every shadow root under home-assistant via JS, and
+        // keep re-injecting on SPA navigations (MutationObserver + interval).
+        // Media query on real viewport width -> zero impact on larger panels (10").
+        // Single-column sections + per-section card grid: cards get full width.
+        const compactCSS = [
+          '(function() {',
+          '  if (window.__haCompactTimer) return true;',
+          '  var CSS = "@media (max-width: 900px){" +',
+          '    "hui-sections-view{--column-min-width:780px!important;overflow-x:auto!important;}" +',
+          '    ".wrapper{max-width:100%!important;}" +',
+          '    ".container{grid-template-columns:1fr!important;}" +',
+          '    ".content{grid-template-columns:1fr!important;}" +',
+          '    ".section{grid-column:auto!important;}" +',
+          '    "}";',
+          '  // Host-specific compact rules: injected only inside the matching shadow root.',
+          '  // Makes the climate more-info dialog fit small panels (7\\" 800x480):',
+          '  // smaller temp dial (size class sm), tighter margins, no wrapper padding.',
+          '  var HOST_CSS = {',
+          '    "ha-state-control-climate-temperature": ":host{width:176px!important;}",',
+          '    "more-info-climate": "@media (max-width:900px){:host .current{margin-bottom:2px!important;}" +',
+          '      ":host .controls{margin-bottom:2px!important;}" +',
+          '      ":host ha-more-info-control-select-container{margin:0!important;}}",',
+          '    "ha-adaptive-dialog": "@media (max-width:900px){:host .content-wrapper{padding-top:0!important;padding-bottom:0!important;}}",',
+          '    "ha-more-info-info": "@media (max-width:900px){:host .container{padding:0 8px 0 8px!important;margin:0!important;}}"',
+          '  };',
+          '  function injectInto(root) {',
+          '    if (!root || !root.querySelector || root.querySelector("style[data-ha-compact]")) return;',
+          '    var host = root.host ? root.host.localName : null;',
+          '    var css = CSS;',
+          '    if (host && HOST_CSS[host]) css += HOST_CSS[host];',
+          '    if (css === CSS && !root.host) css = CSS; // document root: global only',
+          '    try {',
+          '      var s = document.createElement("style");',
+          '      s.setAttribute("data-ha-compact", "1");',
+          '      s.textContent = css;',
+          '      root.appendChild(s);',
+          '    } catch (e) {}',
+          '  }',
+          '  function scan() {',
+          '    injectInto(document.head || document.documentElement);',
+          '    var ha = document.querySelector("home-assistant");',
+          '    if (!ha) return;',
+          '    var walk = function(el) {',
+          '      var sr = el.shadowRoot;',
+          '      if (!sr) return;',
+          '      injectInto(sr);',
+          '      var all = sr.querySelectorAll("*");',
+          '      for (var i = 0; i < all.length; i++) walk(all[i]);',
+          '    };',
+          '    walk(ha);',
+          '  }',
+          '  window.__haCompactTimer = setInterval(scan, 1500);',
+          '  scan();',
+          '  return true;',
+          '})()'
+        ].join('\n');
+        // Re-run on every full page load (SPA navigations are covered by the
+        // in-page interval/observer; full reloads re-trigger did-finish-load).
+        mainWindow.webContents.on('did-finish-load', function() {
+          mainWindow.webContents.executeJavaScript(compactCSS).catch(function() {});
+        });
+        mainWindow.webContents.executeJavaScript(compactCSS).catch(function() {});
 
         // Inject i18n (must run before overlay)
         try {
