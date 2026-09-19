@@ -97,7 +97,36 @@ cd "${INSTALL_DIR}"
 # installs everything EXCEPT the one binary the app needs to run.
 npm install
 
-# ── Create systemd user service ──
+# ── Verify the Electron binary actually landed ──
+# electron's install.js extracts the download via extract-zip, which can exit 0
+# without extracting anything on newer Node releases. Verify, and fall back to
+# unzipping the cached archive ourselves.
+echo -e "${BLUE}[4/5] Verifying Electron runtime...${NC}"
+ELECTRON_BIN="${INSTALL_DIR}/node_modules/electron/dist/electron"
+if [ ! -x "${ELECTRON_BIN}" ]; then
+  echo -e "${YELLOW}  Electron not extracted — repairing from cache...${NC}"
+  ZIP="$(find "$(getent passwd "${TARGET_USER}" | cut -d: -f6)/.cache/electron" /root/.cache/electron \
+        -name 'electron-v*.zip' 2>/dev/null | head -1)"
+  if [ -z "${ZIP}" ]; then
+    echo -e "${RED}  No cached Electron archive found. Re-run: npm rebuild electron${NC}"
+    exit 1
+  fi
+  rm -rf "${INSTALL_DIR}/node_modules/electron/dist"
+  mkdir -p "${INSTALL_DIR}/node_modules/electron/dist"
+  unzip -q "${ZIP}" -d "${INSTALL_DIR}/node_modules/electron/dist"
+  printf 'electron' > "${INSTALL_DIR}/node_modules/electron/path.txt"
+  chmod +x "${ELECTRON_BIN}" "${INSTALL_DIR}/node_modules/electron/dist/chrome_crashpad_handler"
+fi
+chown -R "${TARGET_USER}:${TARGET_USER}" "${INSTALL_DIR}"
+# Enable the Chromium sandbox properly instead of passing --no-sandbox.
+# Must come after the recursive chown, which would otherwise strip the setuid bit.
+SANDBOX="${INSTALL_DIR}/node_modules/electron/dist/chrome-sandbox"
+if [ -f "${SANDBOX}" ]; then
+  chown root:root "${SANDBOX}" && chmod 4755 "${SANDBOX}"
+fi
+echo "  $("${ELECTRON_BIN}" --version 2>/dev/null || echo 'version check skipped')"
+
+# ── Desktop integration ──
 echo -e "${BLUE}[4/5] Creating desktop integration...${NC}"
 
 # Desktop entry
