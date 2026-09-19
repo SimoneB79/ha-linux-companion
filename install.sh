@@ -76,7 +76,10 @@ else
 fi
 
 cd "${INSTALL_DIR}"
-npm install --production
+
+# NOT --production: electron lives in devDependencies, so --production/--omit=dev
+# installs everything EXCEPT the one binary the app needs to run.
+npm install
 
 # ── Create systemd user service ──
 echo -e "${BLUE}[4/5] Creating desktop integration...${NC}"
@@ -101,11 +104,13 @@ cp /usr/share/applications/${APP_NAME}.desktop /etc/xdg/autostart/
 # Run script
 cat > "${INSTALL_DIR}/run.sh" << 'RUNEOF'
 #!/bin/bash
-export DISPLAY=:0
-export XDG_RUNTIME_DIR=/run/user/$(id -u)
-cd /opt/ha-linux-companion
-npx electron . --no-sandbox --disable-gpu-sandbox
+export DISPLAY="${DISPLAY:-@@DISPLAY@@}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+cd "@@INSTALL_DIR@@"
+exec ./node_modules/electron/dist/electron . --ozone-platform-hint=auto "$@"
 RUNEOF
+sed -i -e "s|@@DISPLAY@@|${TARGET_DISPLAY}|g" -e "s|@@INSTALL_DIR@@|${INSTALL_DIR}|g" \
+  "${INSTALL_DIR}/run.sh"
 chmod +x "${INSTALL_DIR}/run.sh"
 
 # ── systemd unit (installed, not enabled) ──
