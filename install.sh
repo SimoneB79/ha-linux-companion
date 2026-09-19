@@ -1,13 +1,13 @@
 #!/bin/bash
-# HA Linux Companion — Installer for Raspberry Pi OS
-# Usage: curl -sSL <this-file> | bash
+# HA Linux Companion — Installer for Debian-based systems
+# Usage: sudo bash install.sh
 
 set -e
 
 APP_NAME="ha-linux-companion"
 INSTALL_DIR="/opt/${APP_NAME}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
-REPO_URL="https://github.com/simonebonizzardi/ha-linux-companion"
+REPO_URL="https://github.com/SimoneB79/ha-linux-companion"
 NODE_MAJOR=20
 
 RED='\033[0;31m'
@@ -46,8 +46,9 @@ echo ""
 
 # ── Install Node.js ──
 echo -e "${BLUE}[1/5] Installing Node.js ${NODE_MAJOR}...${NC}"
-if ! command -v node &>/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash -
+CURRENT_MAJOR="$(node --version 2>/dev/null | sed 's/^v//; s/\..*//')"
+if [ -z "${CURRENT_MAJOR}" ] || [ "${CURRENT_MAJOR}" -lt "${NODE_MAJOR}" ]; then
+  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
   apt-get install -y nodejs
 fi
 echo "  Node $(node --version), npm $(npm --version)"
@@ -142,9 +143,11 @@ Categories=Utility;
 StartupNotify=true
 EOF
 
-# Autostart entry
-mkdir -p /etc/xdg/autostart
-cp /usr/share/applications/${APP_NAME}.desktop /etc/xdg/autostart/
+# Autostart for the target user only, not every account on the machine.
+USER_HOME="$(getent passwd "${TARGET_USER}" | cut -d: -f6)"
+install -d -o "${TARGET_USER}" -g "${TARGET_USER}" "${USER_HOME}/.config/autostart"
+cp "/usr/share/applications/${APP_NAME}.desktop" "${USER_HOME}/.config/autostart/"
+chown "${TARGET_USER}:${TARGET_USER}" "${USER_HOME}/.config/autostart/${APP_NAME}.desktop"
 
 # Run script
 cat > "${INSTALL_DIR}/run.sh" << 'RUNEOF'
@@ -177,6 +180,6 @@ echo -e "${GREEN}✓ HA Linux Companion installed!${NC}"
 echo ""
 echo "  Run from menu:  Applications → HA Companion"
 echo "  Run from CLI:   ${INSTALL_DIR}/run.sh"
-echo "  Autostart:      Enabled (xdg autostart)"
+echo "  Autostart:      Enabled for ${TARGET_USER}"
 echo ""
 echo -e "${BLUE}First launch will show the connection screen.${NC}"
