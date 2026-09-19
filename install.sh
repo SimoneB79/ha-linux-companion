@@ -53,11 +53,27 @@ fi
 echo "  Node $(node --version), npm $(npm --version)"
 
 # ── Install dependencies ──
+# Package names differ across releases (the t64 ABI transition renamed several
+# of these), so install one by one and report what is genuinely missing.
 echo -e "${BLUE}[2/5] Installing system dependencies...${NC}"
-apt-get install -y \
-  libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 \
-  xdg-utils libatspi2.0-0 libdrm2 libgbm1 libasound2 \
-  chromium || true
+apt-get update -qq || true
+MISSING=()
+for pkg in libgtk-3-0t64:libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 \
+           xdg-utils libatspi2.0-0t64:libatspi2.0-0 libdrm2 libgbm1 \
+           libasound2t64:libasound2; do
+  primary="${pkg%%:*}"; fallback="${pkg#*:}"
+  if apt-get install -y -qq "${primary}" >/dev/null 2>&1; then
+    continue
+  elif [ "${fallback}" != "${primary}" ] && apt-get install -y -qq "${fallback}" >/dev/null 2>&1; then
+    continue
+  else
+    MISSING+=("${primary}")
+  fi
+done
+if [ ${#MISSING[@]} -gt 0 ]; then
+  echo -e "${YELLOW}  Warning: could not install: ${MISSING[*]}${NC}"
+  echo -e "${YELLOW}  Electron may fail to start. Install these manually.${NC}"
+fi
 
 # ── Install app ──
 echo -e "${BLUE}[3/5] Installing application...${NC}"
