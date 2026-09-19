@@ -45,7 +45,7 @@ echo -e "  Target user: ${GREEN}${TARGET_USER}${NC} (uid ${TARGET_UID}, DISPLAY 
 echo ""
 
 # ── Install Node.js ──
-echo -e "${BLUE}[1/5] Installing Node.js ${NODE_MAJOR}...${NC}"
+echo -e "${BLUE}[1/6] Installing Node.js ${NODE_MAJOR}...${NC}"
 CURRENT_MAJOR="$(node --version 2>/dev/null | sed 's/^v//; s/\..*//')"
 if [ -z "${CURRENT_MAJOR}" ] || [ "${CURRENT_MAJOR}" -lt "${NODE_MAJOR}" ]; then
   curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
@@ -56,7 +56,7 @@ echo "  Node $(node --version), npm $(npm --version)"
 # ── Install dependencies ──
 # Package names differ across releases (the t64 ABI transition renamed several
 # of these), so install one by one and report what is genuinely missing.
-echo -e "${BLUE}[2/5] Installing system dependencies...${NC}"
+echo -e "${BLUE}[2/6] Installing system dependencies...${NC}"
 apt-get update -qq || true
 MISSING=()
 for pkg in libgtk-3-0t64:libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 \
@@ -77,7 +77,7 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 fi
 
 # ── Install app ──
-echo -e "${BLUE}[3/5] Installing application...${NC}"
+echo -e "${BLUE}[3/6] Installing application...${NC}"
 mkdir -p "${INSTALL_DIR}"
 
 # Copy all files
@@ -102,7 +102,7 @@ npm install
 # electron's install.js extracts the download via extract-zip, which can exit 0
 # without extracting anything on newer Node releases. Verify, and fall back to
 # unzipping the cached archive ourselves.
-echo -e "${BLUE}[4/5] Verifying Electron runtime...${NC}"
+echo -e "${BLUE}[4/6] Verifying Electron runtime...${NC}"
 ELECTRON_BIN="${INSTALL_DIR}/node_modules/electron/dist/electron"
 if [ ! -x "${ELECTRON_BIN}" ]; then
   echo -e "${YELLOW}  Electron not extracted — repairing from cache...${NC}"
@@ -128,7 +128,7 @@ fi
 echo "  $("${ELECTRON_BIN}" --version 2>/dev/null || echo 'version check skipped')"
 
 # ── Desktop integration ──
-echo -e "${BLUE}[4/5] Creating desktop integration...${NC}"
+echo -e "${BLUE}[5/6] Creating desktop integration...${NC}"
 
 # Desktop entry
 cat > /usr/share/applications/${APP_NAME}.desktop << EOF
@@ -162,7 +162,7 @@ sed -i -e "s|@@DISPLAY@@|${TARGET_DISPLAY}|g" -e "s|@@INSTALL_DIR@@|${INSTALL_DI
 chmod +x "${INSTALL_DIR}/run.sh"
 
 # ── systemd unit (installed, not enabled) ──
-echo -e "${BLUE}[5/5] Installing systemd unit (not enabled)...${NC}"
+echo -e "${BLUE}[6/6] Installing systemd unit (not enabled)...${NC}"
 if [ -f "${INSTALL_DIR}/scripts/${APP_NAME}.service" ]; then
   sed -e "s|@@USER@@|${TARGET_USER}|g" \
       -e "s|@@UID@@|${TARGET_UID}|g" \
