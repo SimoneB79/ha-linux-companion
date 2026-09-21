@@ -1,6 +1,6 @@
 [Unit]
 Description=HA Linux Companion (Electron)
-After=network-online.target graphical.target
+After=network-online.target avahi-daemon.service systemd-user-sessions.service graphical.target
 Wants=network-online.target
 
 [Service]
@@ -8,10 +8,12 @@ Type=simple
 User=@@USER@@
 Environment=DISPLAY=@@DISPLAY@@
 Environment=XDG_RUNTIME_DIR=/run/user/@@UID@@
+@@WAYLAND_ENV@@
 WorkingDirectory=@@WORKDIR@@
-ExecStart=@@WORKDIR@@/node_modules/electron/dist/electron . --ozone-platform-hint=auto
+@@EXEC_START_PRE@@
+ExecStart=@@WORKDIR@@/node_modules/electron/dist/electron . @@ELECTRON_FLAGS@@
 Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=graphical.target
+WantedBy=@@WANTED_BY@@
