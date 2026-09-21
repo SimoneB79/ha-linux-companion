@@ -184,19 +184,77 @@ function log(msg) {
   console.log(line.trim());
 }
 
+function normalizeTemperature(rawValue) {
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return null;
+  const temp = Math.abs(parsed) > 1000 ? parsed / 1000 : parsed;
+  // Ignore bogus ACPI/sensor values (for example -268.2°C).
+  if (temp < -40 || temp > 125) return null;
+  return temp;
+}
+
+function readThermalZoneTemperatures() {
+  const thermalRoot = '/sys/class/thermal';
+  try {
+    return fs.readdirSync(thermalRoot)
+      .filter(name => name.startsWith('thermal_zone'))
+      .map(name => {
+        const zonePath = path.join(thermalRoot, name);
+        const typePath = path.join(zonePath, 'type');
+        const tempPath = path.join(zonePath, 'temp');
+        const type = fs.existsSync(typePath) ? fs.readFileSync(typePath, 'utf8').trim() : name;
+        const temp = normalizeTemperature(fs.readFileSync(tempPath, 'utf8').trim());
+        return { name, type, temp };
+      })
+      .filter(sensor => sensor.temp !== null);
+  } catch (e) {
+    return [];
+  }
+}
+
+function thermalSensorPriority(sensor) {
+  const type = (sensor.type || '').toLowerCase();
+  if (type.includes('coretemp') || type.includes('x86_pkg_temp')) return 0;
+  if (type.includes('k10temp') || type.includes('zenpower')) return 1;
+  if (type.includes('cpu') || type.includes('soc') || type.includes('bcm')) return 2;
+  if (type.includes('acpi') || type.includes('acpitz')) return 5;
+  return 3;
+}
+
+async function getCpuTemperatureC() {
+  const sysfsTemps = readThermalZoneTemperatures().sort((a, b) => {
+    const priority = thermalSensorPriority(a) - thermalSensorPriority(b);
+    if (priority !== 0) return priority;
+    return b.temp - a.temp;
+  });
+  const bestSysfs = sysfsTemps[0];
+  if (bestSysfs && thermalSensorPriority(bestSysfs) <= 2) return bestSysfs.temp;
+
+  try {
+    const cpuTemp = await si.cpuTemperature();
+    const candidates = [cpuTemp.main, cpuTemp.max, ...(cpuTemp.cores || [])]
+      .map(normalizeTemperature)
+      .filter(temp => temp !== null);
+    if (candidates.length > 0) return Math.max(...candidates);
+  } catch (e) {}
+
+  return bestSysfs ? bestSysfs.temp : null;
+}
+
 async function collectSensors() {
   const sensors = [];
 
   try {
-    // CPU Temperature (Raspberry Pi)
+    // CPU Temperature: prefer valid CPU/core sensors and ignore bogus ACPI values.
     try {
-      const tempRaw = fs.readFileSync('/sys/class/thermal/thermal_zone0/temp', 'utf8');
-      const temp = parseFloat(tempRaw) / 1000;
-      sensors.push({
-        unique_id: 'cpu_temperature', state: temp.toFixed(1), type: 'sensor',
-        name: 'CPU Temperature', icon: 'mdi:thermometer',
-      });
-    } catch (e) { /* not a Pi */ }
+      const temp = await getCpuTemperatureC();
+      if (temp !== null) {
+        sensors.push({
+          unique_id: 'cpu_temperature', state: temp.toFixed(1), type: 'sensor',
+          name: 'CPU Temperature', icon: 'mdi:thermometer',
+        });
+      }
+    } catch (e) {}
 
     // CPU Usage
     try {
@@ -1548,8 +1606,12 @@ ipcMain.handle('get-hardware-info', () => {
   hw.cpuCores = parseInt(runShell('nproc 2>/dev/null')) || 1;
   hw.cpuFreq = runShell('cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq 2>/dev/null');
   if (hw.cpuFreq) hw.cpuFreqMhz = Math.round(parseInt(hw.cpuFreq) / 1000);
-  hw.cpuTemp = runShell('cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null');
-  if (hw.cpuTemp) hw.cpuTempC = (parseInt(hw.cpuTemp) / 1000).toFixed(1);
+  const cpuTempC = readThermalZoneTemperatures().sort((a, b) => {
+    const priority = thermalSensorPriority(a) - thermalSensorPriority(b);
+    if (priority !== 0) return priority;
+    return b.temp - a.temp;
+  })[0]?.temp;
+  if (cpuTempC !== undefined) hw.cpuTempC = cpuTempC.toFixed(1);
   // RAM
   const memInfo = runShell('free -m 2>/dev/null');
   const memMatch = memInfo.match(/Mem:\s+(\d+)\s+(\d+)/);
