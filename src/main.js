@@ -535,12 +535,43 @@ function loadDashboard() {
           '  return true;',
           '})()'
         ].join('\n');
-        // Re-run on every full page load (SPA navigations are covered by the
-        // in-page interval/observer; full reloads re-trigger did-finish-load).
+        // ── Layout modes for small panels ──
+        // config.layoutMode: auto (default) | zoom | mobile | compact | off
+        //   auto    -> zoom when the panel is <= 900px wide, off otherwise
+        //   zoom    -> scale the whole HA UI (layoutZoom, default 0.625) so an
+        //              800x480 panel renders the same layout as a 1280x800 one
+        //   mobile  -> zoom so the logical width falls under HA's mobile
+        //              breakpoint (~768px): masonry single-column layout
+        //   compact -> legacy v3.0.2 single-column CSS injection (scroll-x)
+        //   off     -> no adaptation (native desktop layout)
+        const panelWidth = screen.getPrimaryDisplay().workAreaSize.width;
+        let layoutMode = String(config.layoutMode || 'auto').toLowerCase();
+        if (layoutMode === 'auto') layoutMode = panelWidth <= 900 ? 'zoom' : 'off';
+        const applyLayoutZoom = function() {
+          if (!mainWindow || mainWindow.isDestroyed()) return;
+          let z = 0;
+          if (layoutMode === 'zoom') {
+            const cfgZoom = Number(config.layoutZoom);
+            z = cfgZoom > 0 && cfgZoom <= 3 ? cfgZoom : 0.625;
+          } else if (layoutMode === 'mobile') {
+            z = Math.min(panelWidth / 760, 3);
+          }
+          if (z > 0) {
+            try { mainWindow.webContents.setZoomFactor(z); } catch (e) {}
+          }
+        };
+        // Re-run on every full page load (SPA navigations keep the zoom factor;
+        // full reloads re-trigger did-finish-load and re-apply).
         mainWindow.webContents.on('did-finish-load', function() {
-          mainWindow.webContents.executeJavaScript(compactCSS).catch(function() {});
+          if (layoutMode === 'compact') {
+            mainWindow.webContents.executeJavaScript(compactCSS).catch(function() {});
+          }
+          applyLayoutZoom();
         });
-        mainWindow.webContents.executeJavaScript(compactCSS).catch(function() {});
+        if (layoutMode === 'compact') {
+          mainWindow.webContents.executeJavaScript(compactCSS).catch(function() {});
+        }
+        applyLayoutZoom();
 
         // Inject i18n (must run before overlay)
         try {
