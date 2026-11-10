@@ -170,8 +170,16 @@ class HAClient {
         app_data: {
           push_url: pushUrl,
           push_token: pushToken,
-          push_websocket_channel: true,
+          // HTTP push (deterministic, SSRF-safe with LAN IP) instead of the
+          // websocket channel, which requires an extra subscription flow.
+          push_websocket_channel: false,
         },
+        // required by the HA schema — without these the update is rejected
+        app_version: APP_VERSION,
+        device_name: config.deviceName || os.hostname(),
+        manufacturer: 'Linux Panel',
+        model: os.hostname(),
+        os_version: os.release(),
       });
       log('[PushNotify] Updated push_url: ' + pushUrl + ' → ' + JSON.stringify(result?.data));
       return true;
@@ -433,7 +441,10 @@ function loadDashboard() {
   if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
   if (haWs) { try { haWs.removeAllListeners(); haWs.close(); } catch(_) {} haWs = null; }
 
-  wsConnecting = true;
+  // NOTE: do NOT set wsConnecting here — connectNotifications owns that guard.
+  // Setting it prematurely left it stuck=true forever and the push channel
+  // never subscribed (notifications/commands silently dead since the
+  // 'WS reconnect storm' fix).
   const token = auth.getAccessToken() || config.token;
   dashboardLoaded = false;
   authInjected = false;
@@ -774,6 +785,7 @@ let haWs = null;
 let wsReconnectTimer = null;
 
 let wsConnecting = false;
+let wsConnectTimer = null;
 
 function cleanupWs() {
   if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
@@ -790,7 +802,7 @@ function connectNotifications() {
   // Always reload config to pick up refreshed tokens
   config = loadConfig();
   const accessToken = auth.getAccessToken() || config.token;
-  if (!config.url || !accessToken) return;
+  if (!config.url || !accessToken) { log('[WS] skip: missing url/token'); return; }
 
   const haUrl = config.url.replace(/\/+$/, '');
   // Clear any pending reconnect and stale socket
@@ -806,6 +818,21 @@ function connectNotifications() {
 
   try {
     haWs = new WebSocket(wsUrl, { rejectUnauthorized: false });
+    // Hard connect timeout: a socket that never opens/closes/errors must not
+    // leave wsConnecting=true forever (blocks every future reconnect).
+    if (wsConnectTimer) clearTimeout(wsConnectTimer);
+    wsConnectTimer = setTimeout(() => {
+      if (wsConnecting) {
+        log('[WS] connect timeout — forcing reset');
+        wsConnecting = false;
+        try { haWs.removeAllListeners(); haWs.terminate(); } catch (_) {}
+        haWs = null;
+        if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = setTimeout(connectNotifications, 10000);
+        if (wsReconnectTimer.unref) wsReconnectTimer.unref();
+      }
+    }, 10000);
+    if (wsConnectTimer.unref) wsConnectTimer.unref();
   } catch (e) {
     log('[WS] Error: ' + e.message);
     wsConnecting = false;
@@ -814,6 +841,7 @@ function connectNotifications() {
 
   haWs.on('open', () => {
     wsConnecting = false;
+    if (wsConnectTimer) { clearTimeout(wsConnectTimer); wsConnectTimer = null; }
     // Auth
     haWs.send(JSON.stringify({ type: 'auth', access_token: accessToken }));
     log('[WS] Connected');
@@ -827,14 +855,10 @@ function connectNotifications() {
         // Subscribe to HA events
         haWs.send(JSON.stringify({ id: 1, type: 'subscribe_events', event_type: 'persistent_notifications_updated' }));
 
-        // Subscribe to mobile_app push notification channel (standard HA way)
-        if (config.webhookId) {
-          haWs.send(JSON.stringify({
-            id: 2, type: 'mobile_app/push_notification_channel',
-            webhook_id: config.webhookId, support_confirm: true,
-          }));
-          log('[WS] Subscribed to push notification channel');
-        }
+        // NOTE: push notifications arrive via HTTP POST to our push_url
+        // (mobile_app _send_message) — the websocket push channel requires a
+        // rate-limit protocol we don't implement, so we do NOT subscribe it.
+        // The websocket is kept for presence/state_changed subscriptions.
 
         // Subscribe to state_changed for display presence wake (TouchSense)
         if (config.presenceEntity) {
