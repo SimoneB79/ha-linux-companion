@@ -253,6 +253,18 @@ async function getCpuTemperatureC() {
 async function collectSensors() {
   const sensors = [];
 
+  // Display state (TouchSense): binary_sensor for HA automations
+  try {
+    sensors.push({
+      unique_id: 'display_state',
+      state: (displayCtrl && displayCtrl.screenOff) ? 'off' : 'on',
+      type: 'binary_sensor',
+      name: 'Display State',
+      icon: 'mdi:monitor',
+      device_class: 'power',
+    });
+  } catch (e) {}
+
   try {
     // CPU Temperature: prefer valid CPU/core sensors and ignore bogus ACPI values.
     try {
@@ -1252,11 +1264,13 @@ function handleNotificationCommand(message, data) {
   switch (cmd) {
     case 'command_screen_on':
       runShell('vcgencmd display_power 1 2>/dev/null || xset dpms force on 2>/dev/null');
+      if (displayCtrl) displayCtrl.forceOn('notify');
       log('[Command] screen_on');
       return true;
 
     case 'command_screen_off':
       runShell('vcgencmd display_power 0 2>/dev/null || xset dpms force off 2>/dev/null');
+      if (displayCtrl) displayCtrl.forceOff('notify');
       log('[Command] screen_off');
       return true;
 
@@ -1410,6 +1424,43 @@ function showNotification(title, message, options = {}) {
       log('[Notify] Toast inject error: ' + e.message);
     }
   }
+}
+
+// ── Desktop entry (auto-installed app icon) ──
+function installDesktopEntry() {
+  try {
+    const home = os.homedir();
+    const electronBin = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
+    const appDir = path.join(__dirname, '..');
+    const icon = path.join(appDir, 'assets', 'icon.png');
+    const entry = [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=HA Linux Companion',
+      'Comment=Home Assistant companion panel',
+      'Exec=' + electronBin + ' ' + appDir + ' --no-sandbox %U',
+      'Icon=' + icon,
+      'Terminal=false',
+      'Categories=Utility;',
+      'StartupWMClass=ha-linux-companion',
+      'X-GNOME-Autostart-enabled=false',
+    ].join(String.fromCharCode(10));
+    const appsDir = path.join(home, '.local', 'share', 'applications');
+    fs.mkdirSync(appsDir, { recursive: true });
+    fs.writeFileSync(path.join(appsDir, 'ha-linux-companion.desktop'), entry + String.fromCharCode(10));
+    // copy onto the Desktop folder when it exists (localized names included)
+    for (const d of ['Desktop', 'Scrivania', 'Bureau', 'Schreibtisch']) {
+      const desk = path.join(home, d);
+      try {
+        if (fs.statSync(desk).isDirectory()) {
+          fs.writeFileSync(path.join(desk, 'ha-linux-companion.desktop'), entry + String.fromCharCode(10));
+          break;
+        }
+      } catch (_) {}
+    }
+    try { runShell('update-desktop-database ' + appsDir + ' 2>/dev/null || true'); } catch (_) {}
+    log('[Desktop] application entry installed');
+  } catch (e) { log('[Desktop] entry error: ' + e.message); }
 }
 
 function setDisplayOption(key, value) {
@@ -2061,10 +2112,12 @@ app.whenReady().then(async () => {
 
   createMainWindow();
   createTray();
+  try { installDesktopEntry(); } catch (_) {}
 
   // ── Display sense (TouchSense): screen-off with wake on touch / presence ──
   displayCtrl = new DisplayController(log);
   displayCtrl.on('blanked', () => {
+    try { updateSensors(); } catch (_) {} // refresh display_state sensor
     // Overlay fallback ONLY when real DPMS off is unavailable (backend 'overlay' or dpms failed)
     if (displayCtrl.backend === 'wayland' || displayCtrl.backend === 'x11') return;
     try {
@@ -2096,6 +2149,7 @@ app.whenReady().then(async () => {
       if (blankWindow && !blankWindow.isDestroyed()) { blankWindow.destroy(); blankWindow = null; }
       if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
     } catch (_) {}
+    try { updateSensors(); } catch (_) {} // refresh display_state sensor
   });
   try { await displayCtrl.init(config); } catch (e) { log('[DSP] init failed: ' + e.message); }
 });

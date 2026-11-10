@@ -176,6 +176,23 @@ class DisplayController extends (require('events')) {
     } finally { this._switching = false; }
   }
 
+  // HA-forced control (automation/notify commands) — bypasses displayMode.
+  // forceOn keeps the screen awake for a full timeout window even in touchWake.
+  async forceOn(reason = 'ha') {
+    this.lastActivity = Date.now();
+    await this.wake(reason);
+    this.log('[DSP] forced ON (' + reason + ')');
+  }
+
+  async forceOff(reason = 'ha') {
+    if (this.screenOff) return;
+    const prevMode = this.mode;
+    this.mode = 'touchWake'; // temporarily allow blanking even in alwaysOn
+    await this._screenOff();
+    this.mode = prevMode;
+    this.log('[DSP] forced OFF (' + reason + ')');
+  }
+
   async wake(reason = 'input') {
     if (!this.screenOff) { this.lastActivity = Date.now(); return; }
     if (this._switching) return;

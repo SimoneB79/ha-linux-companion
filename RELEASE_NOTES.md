@@ -1,3 +1,16 @@
+## v4.1.0 — HA-controlled display + desktop icon (2026-11-10)
+
+### Screen control from Home Assistant
+- `notify.mobile_app_<device>` commands now use the TouchSense controller: `command_screen_on` / `command_screen_off` force the display on/off regardless of displayMode (perfect for automations, e.g. light on -> screen on)
+- New `binary_sensor.<device>_display_state` (device_class power) pushed to HA, refreshed immediately on every blank/restore
+- Pair them with a template switch or an automation: light ON -> `command_screen_on`, light OFF -> `command_screen_off`
+
+### Desktop integration
+- Application launcher (.desktop + icon) auto-installed at first run into `~/.local/share/applications` and onto the Desktop folder (localized) — the panel app is now reachable like any normal Linux app
+
+### Compatibility
+- TouchSense v4.0.0 modes unchanged: alwaysOn / touchWake / presenceWake
+
 ## v4.0.0 — TouchSense (2026-11-10)
 
 ### New: TouchSense display modes
