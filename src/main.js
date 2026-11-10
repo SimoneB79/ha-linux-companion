@@ -264,10 +264,11 @@ async function collectSensors() {
   // Display state (TouchSense): binary_sensor for HA automations
   try {
     sensors.push({
-      unique_id: 'display_state',
-      state: (displayCtrl && displayCtrl.screenOff) ? 'off' : 'on',
+      unique_id: 'display_screen',
+      // boolean: mobile_app binary_sensor entities treat any truthy string as ON
+      state: (displayCtrl && displayCtrl.screenOff) ? false : true,
       type: 'binary_sensor',
-      name: 'Display State',
+      name: 'Display Screen',
       icon: 'mdi:monitor',
       device_class: 'power',
     });
