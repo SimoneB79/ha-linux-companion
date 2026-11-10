@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('haCompanion', {
   displayOn: () => ipcRenderer.invoke('display-on'),
   displayOff: () => ipcRenderer.invoke('display-off'),
   getDisplayState: () => ipcRenderer.invoke('get-display-state'),
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  setDisplayOptions: (opts) => ipcRenderer.invoke('set-display-options', opts),
 
   // System power
   rebootSystem: () => ipcRenderer.invoke('reboot-system'),

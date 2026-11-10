@@ -13,6 +13,7 @@ const os = require('os');
 const crypto = require('crypto');
 const si = require('systeminformation');
 const auth = require('./auth');
+const { DisplayController } = require('./display');
 
 // ── Config ──
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'ha-linux-companion');
@@ -23,6 +24,8 @@ let mainWindow = null;
 let tray = null;
 let sensorInterval = null;
 let config = null;
+let displayCtrl = null;
+let blankWindow = null;
 
 // Use auth module for config management
 function loadConfig() { return auth.loadConfig(); }
@@ -143,9 +146,15 @@ class HAClient {
   async updateSensors(sensors) {
     if (!this.webhookId) return;
 
-    // Register sensors first
-    for (const sensor of sensors) {
-      await this.webhook('register_sensor', sensor);
+    // FIX 13/10/2026 (Simone AI): registra i sensori UNA volta sola.
+    // Re-registrare a ogni ciclo rende le entità unavailable per ~5s
+    // (pattern: unavailable→valore ogni 60s = flapping sensor.system_battery_soc ecc.)
+    if (!this._sensorsRegistered) {
+      for (const sensor of sensors) {
+        await this.webhook('register_sensor', sensor);
+      }
+      this._sensorsRegistered = true;
+      log('[Sensors] Registration completed once (' + sensors.length + ' sensors)');
     }
 
     // Then update states (strip registration-only fields)
@@ -819,11 +828,22 @@ function connectNotifications() {
           log('[WS] Subscribed to push notification channel');
         }
 
+        // Subscribe to state_changed for display presence wake (TouchSense)
+        if (config.presenceEntity) {
+          haWs.send(JSON.stringify({ id: 4, type: 'subscribe_events', event_type: 'state_changed' }));
+          log('[WS] Subscribed to state_changed for presence: ' + config.presenceEntity);
+        }
+
         log('[WS] Authenticated');
       }
 
       if (msg.type === 'event' && msg.event) {
         const ev = msg.event;
+
+        // Display presence wake (TouchSense): route state_changed to display controller
+        if (ev.event_type === 'state_changed' && ev.data && ev.data.entity_id && displayCtrl) {
+          try { displayCtrl.setPresence(ev.data.entity_id, (ev.data.new_state || {}).state); } catch (_) {}
+        }
 
         // Mobile app push notification from HA (standard push channel)
         if (ev.message !== undefined || ev.title !== undefined) {
@@ -1392,6 +1412,17 @@ function showNotification(title, message, options = {}) {
   }
 }
 
+function setDisplayOption(key, value) {
+  try {
+    config = loadConfig();
+    config[key] = value;
+    saveConfig(config);
+    if (displayCtrl) displayCtrl.applyConfig(config);
+    log('[DSP] config updated: ' + key + '=' + value);
+    createTray(); // rebuild menu radios
+  } catch (e) { log('[DSP] setDisplayOption error: ' + e.message); }
+}
+
 function createTray() {
   try {
     tray = new Tray(path.join(__dirname, '..', 'assets', 'icon.png'));
@@ -1404,6 +1435,39 @@ function createTray() {
           mainWindow.setFullScreen(!mainWindow.isFullScreen());
         }
       }},
+      { type: 'separator' },
+      {
+        label: '_Display (TouchSense)',
+        submenu: [
+          { label: 'Always On', type: 'radio',
+            checked: (config.displayMode || 'alwaysOn') === 'alwaysOn',
+            click: () => setDisplayOption('displayMode', 'alwaysOn') },
+          { label: 'Touch Wake', type: 'radio',
+            checked: config.displayMode === 'touchWake',
+            click: () => setDisplayOption('displayMode', 'touchWake') },
+          { label: 'Presence Wake', type: 'radio',
+            checked: config.displayMode === 'presenceWake',
+            click: () => setDisplayOption('displayMode', 'presenceWake') },
+          { type: 'separator' },
+          ...[1, 5, 10, 30].map(min => ({
+            label: min + ' min timeout', type: 'radio',
+            checked: Number(config.displayTimeoutMin || 5) === min,
+            click: () => setDisplayOption('displayTimeoutMin', min) })),
+          { type: 'separator' },
+          { label: 'Presence entity: ' + (config.presenceEntity || 'none'),
+            click: () => {
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Presence entity',
+                message: 'Presence entity per Presence Wake',
+                detail: 'Entita attuale: ' + (config.presenceEntity || 'nessuna') + '\n\nImpostala nel file ~/.config/ha-linux-companion/config.json campo "presenceEntity" (es. binary_sensor.pir_ingresso), poi usa Reload. La sottoscrizione parte al prossimo avvio o dopo Disconnect/Connect.',
+                buttons: ['OK'],
+              }).catch(() => {});
+            } },
+          { label: 'Wake display now',
+            click: () => { if (displayCtrl) displayCtrl.wake('manual'); } },
+        ],
+      },
       { type: 'separator' },
       { label: '⚙️ Settings', click: () => { loadLoginView(); mainWindow.show(); } },
       { label: '❌ Disconnect', click: () => {
@@ -1419,7 +1483,7 @@ function createTray() {
     ]);
     tray.setToolTip('HA Linux Companion');
     tray.setContextMenu(contextMenu);
-    tray.on('click', () => { if (mainWindow) mainWindow.show(); });
+    tray.on('click', () => { if (displayCtrl) displayCtrl.wake('tray'); if (mainWindow) mainWindow.show(); });
   } catch (err) {
     console.log('Tray not available:', err.message);
   }
@@ -1528,6 +1592,7 @@ ipcMain.handle('delete-channel', (event, id) => {
 
 // ── Display Controls ──
 ipcMain.handle('display-on', () => {
+  if (displayCtrl) displayCtrl.wake('manual-on');
   runShell('vcgencmd display_power 1 2>/dev/null || xset dpms force on 2>/dev/null');
   log('[Display] ON');
   return true;
@@ -1535,7 +1600,23 @@ ipcMain.handle('display-on', () => {
 ipcMain.handle('display-off', () => {
   runShell('vcgencmd display_power 0 2>/dev/null || xset dpms force off 2>/dev/null');
   log('[Display] OFF');
+  if (displayCtrl && !displayCtrl.screenOff) { try { displayCtrl._screenOff(); } catch (_) {} }
   return true;
+});
+ipcMain.handle('set-display-options', (event, opts) => {
+  try {
+    config = loadConfig();
+    for (const [k, v] of Object.entries(opts || {})) config[k] = v;
+    saveConfig(config);
+    if (displayCtrl) displayCtrl.applyConfig(config);
+    // presence entity changed → resubscribe requires WS reconnect
+    if (Object.keys(opts || {}).includes('presenceEntity')) connectNotifications();
+    log('[DSP] display options updated: ' + JSON.stringify(opts));
+    return { success: true };
+  } catch (e) {
+    log('[DSP] set-display-options error: ' + e.message);
+    return { success: false, error: e.message };
+  }
 });
 ipcMain.handle('get-display-state', () => {
   const r = runShell('vcgencmd display_power 2>/dev/null');
@@ -1980,6 +2061,43 @@ app.whenReady().then(async () => {
 
   createMainWindow();
   createTray();
+
+  // ── Display sense (TouchSense): screen-off with wake on touch / presence ──
+  displayCtrl = new DisplayController(log);
+  displayCtrl.on('blanked', () => {
+    // Overlay fallback ONLY when real DPMS off is unavailable (backend 'overlay' or dpms failed)
+    if (displayCtrl.backend === 'wayland' || displayCtrl.backend === 'x11') return;
+    try {
+      if (blankWindow && !blankWindow.isDestroyed()) return;
+      const { width, height } = screen.getPrimaryDisplay().bounds;
+      blankWindow = new BrowserWindow({
+        x: 0, y: 0, width, height,
+        frame: false, show: true, resizable: false, movable: false,
+        skipTaskbar: true, alwaysOnTop: true, focusable: false,
+        backgroundColor: '#000000',
+        webPreferences: { contextIsolation: true, nodeIntegration: false },
+      });
+      blankWindow.setFullScreen(true);
+      blankWindow.loadURL('data:text/html,<html><body style="margin:0;background:%23000;overflow:hidden;cursor:none"></body></html>');
+      blankWindow.on('closed', () => { blankWindow = null; });
+      log('[DSP] blank overlay shown');
+    } catch (err) { log('[DSP] overlay error: ' + err.message); }
+  });
+  displayCtrl.on('backend-learned', (backend) => {
+    try {
+      config = loadConfig();
+      config.displayBackend = backend;
+      saveConfig(config);
+      log('[DSP] learned backend persisted: ' + backend);
+    } catch (e) { log('[DSP] persist backend error: ' + e.message); }
+  });
+  displayCtrl.on('restored', () => {
+    try {
+      if (blankWindow && !blankWindow.isDestroyed()) { blankWindow.destroy(); blankWindow = null; }
+      if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+    } catch (_) {}
+  });
+  try { await displayCtrl.init(config); } catch (e) { log('[DSP] init failed: ' + e.message); }
 });
 
 app.on('window-all-closed', () => {
@@ -1987,6 +2105,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  if (displayCtrl) { try { displayCtrl.stop(); } catch (_) {} }
   stopSensorUpdates();
   stopHealthCheck();
   stopPushServer();

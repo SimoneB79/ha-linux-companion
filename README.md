@@ -16,6 +16,18 @@ The agent had **direct access to real local resources**: Home Assistant instance
 
 ---
 
+## 🖐️ What's new in v4.0.0 — TouchSense
+
+**TouchSense** brings tablet-like display behaviour to your panel:
+
+- 🖐 **Touch Wake** — screen goes dark after an idle timeout and **wakes instantly at the first touch**
+- 📍 **Presence Wake** — screen follows an HA presence sensor (PIR/mmWave/person), wakes on touch too
+- 🔋 Real screen-off via **Wayland (wlr-randr)** or **X11 (xrandr)**, with automatic black-overlay fallback
+- 🧠 **Self-healing**: panels that power-cut their USB touch controller on DPMS-off are detected once and remembered — the touch never dies again
+- ⚙️ Configurable on the panel itself: mode, timeout, presence entity (IT/EN/DE)
+
+See [Release Notes](RELEASE_NOTES.md).
+
 ## Features
 
 - 🔐 **Login** — Username/password + 2FA/MFA, or long-lived token

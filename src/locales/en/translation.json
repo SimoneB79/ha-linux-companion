@@ -1,35 +1,49 @@
 {
-  "days": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-  "months": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-  
+  "days": [
+    "Sun",
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat"
+  ],
+  "months": [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec"
+  ],
   "settings": "Settings",
   "language": "🌐 Language",
-  
   "sectionDisplay": "🖥️ Display",
   "brightness": "Brightness",
   "monitor": "Monitor",
   "nightSchedule": "🌙 Night Schedule",
   "turnOffAt": "Turn off at",
   "turnOnAt": "Turn on at",
-  
   "sectionAudio": "🔊 Audio",
   "volume": "Volume",
   "mute": "Mute",
   "output": "Output",
-  
   "sectionNetwork": "📶 Network",
   "sectionBluetooth": "📶 Bluetooth",
   "bluetooth": "Bluetooth",
   "notAvailable": "Not available",
   "signal": "Signal",
   "interface": "Interface",
-  
   "sectionHardware": "🔧 Hardware",
   "cpuGovernor": "CPU Governor",
-  
   "sectionDevice": "📊 Device",
   "sensors": "Sensors",
-  
   "sectionNotifications": "🔔 Notifications",
   "notifications": "🔔 Notifications",
   "sound": "Sound",
@@ -43,23 +57,17 @@
   "latestNotifications": "Latest notifications",
   "noNotifications": "No notifications",
   "clear": "Clear",
-  
   "sectionChannels": "📡 Channels",
   "channelsDesc": "Channels are created automatically when Home Assistant sends a notification with ",
   "noChannels": "No channels yet.",
-  
   "sectionUpdates": "🔄 Updates",
   "updateError": "Unable to check for updates",
   "updateAvailable": "🟢 New version available!",
-  
   "sectionActions": "⚙ Actions",
-  
   "confirmReboot": "Restart the system?",
   "confirmShutdown": "Shut down the system?",
-  
   "notifCount_one": "{{count}} notification",
   "notifCount_other": "{{count}} notifications",
-  
   "customLabel": "🎵 Custom",
   "noFilesFound": "No files found",
   "noDevicesFound": "No devices found",
@@ -68,5 +76,12 @@
   "scan": "Scan",
   "connect": "Connect",
   "default": "Default",
-  "secondsLabel": "sec"
+  "secondsLabel": "sec",
+  "displaySenseMode": "Screen mode (TouchSense)",
+  "displayModeAlwaysOn": "Always on",
+  "displayModeTouchWake": "Wake on touch",
+  "displayModePresenceWake": "Wake on presence",
+  "displayTimeout": "Sleep after inactivity",
+  "presenceEntity": "Presence sensor (entity_id)",
+  "minutesLabel": "min"
 }

@@ -225,6 +225,9 @@
     <h3>${t('sectionDisplay')}</h3>
     <div class="comp-row" id="comp-brightness-row"><div class="comp-label">${t('brightness')}</div><div style="display:flex;align-items:center;gap:8px"><input type="range" class="comp-slider" id="comp-brightness" min="10" max="100" value="100"><span class="comp-val" id="comp-brightness-val">100%</span></div></div>
     <div class="comp-row"><div class="comp-label">${t('monitor')}</div><div style="display:flex;gap:6px"><button class="comp-btn primary" id="comp-display-on" style="padding:6px 12px;font-size:12px">ON</button><button class="comp-btn secondary" id="comp-display-off" style="padding:6px 12px;font-size:12px">OFF</button></div></div>
+    <div class="comp-row"><div class="comp-label">${t('displaySenseMode')}</div><select class="comp-select" id="comp-dsp-mode"><option value="alwaysOn">${t('displayModeAlwaysOn')}</option><option value="touchWake">${t('displayModeTouchWake')}</option><option value="presenceWake">${t('displayModePresenceWake')}</option></select></div>
+    <div class="comp-row"><div class="comp-label">${t('displayTimeout')}</div><select class="comp-select" id="comp-dsp-timeout"><option value="1">1 ${t('minutesLabel')}</option><option value="5">5 ${t('minutesLabel')}</option><option value="10">10 ${t('minutesLabel')}</option><option value="30">30 ${t('minutesLabel')}</option></select></div>
+    <div class="comp-row"><div class="comp-label">${t('presenceEntity')}</div><input type="text" class="comp-input" id="comp-dsp-presence" placeholder="binary_sensor.pir_ingresso" spellcheck="false"></div>
     <div class="comp-row"><div class="comp-label">${t('nightSchedule')}</div><button class="comp-toggle" id="comp-schedule-enabled"></button></div>
     <div id="comp-schedule-times" style="display:none;padding:6px 0">
       <div class="comp-row"><div class="comp-label">${t('turnOffAt')}</div><input type="time" class="comp-input" id="comp-schedule-off" value="23:00"></div>
@@ -350,6 +353,19 @@
   // ── Display Controls ──
   document.getElementById('comp-display-on').addEventListener('click', function() { ipc('displayOn'); });
   document.getElementById('comp-display-off').addEventListener('click', function() { ipc('displayOff'); });
+
+  // TouchSense display options
+  var dspMode = document.getElementById('comp-dsp-mode');
+  var dspTimeout = document.getElementById('comp-dsp-timeout');
+  var dspPresence = document.getElementById('comp-dsp-presence');
+  ipc('getConfig').then(function(c) {
+    dspMode.value = c.displayMode || 'alwaysOn';
+    dspTimeout.value = String(c.displayTimeoutMin || 5);
+    if (c.presenceEntity) dspPresence.value = c.presenceEntity;
+  });
+  dspMode.addEventListener('change', function() { ipc('setDisplayOptions', { displayMode: dspMode.value }); });
+  dspTimeout.addEventListener('change', function() { ipc('setDisplayOptions', { displayTimeoutMin: parseInt(dspTimeout.value, 10) }); });
+  dspPresence.addEventListener('change', function() { ipc('setDisplayOptions', { presenceEntity: dspPresence.value.trim() }); });
 
   // ── Schedule ──
   var schedEnabled = document.getElementById('comp-schedule-enabled');
