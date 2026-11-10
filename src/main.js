@@ -348,22 +348,34 @@ async function collectSensors() {
   return sensors;
 }
 
+let sensorUpdateCount = 0;
+async function updateSensors() {
+  if (!haClient || !haClient.webhookId) { log('[Sensors] updateSensors skipped: no client'); return; }
+  try {
+    const sensors = await collectSensors();
+    if (sensors.length > 0) {
+      await haClient.updateSensors(sensors);
+      log('[Sensors] ' + sensors.length + ' updated: ' + sensors.map(s => s.unique_id + '=' + s.state).join(', '));
+    }
+    // device_tracker: push fixed panel location every ~5 minutes
+    sensorUpdateCount++;
+    if (config && config.panelLat !== undefined && config.panelLon !== undefined && sensorUpdateCount % 5 === 1) {
+      await haClient.webhook('update_location', {
+        gps: [Number(config.panelLat), Number(config.panelLon)],
+        gps_accuracy: 0, battery: 100,
+      });
+      log('[Location] panel position pushed');
+    }
+  } catch (err) {
+    log('[Sensors] Error: ' + err.message);
+  }
+}
+
 async function startSensorUpdates() {
   if (sensorInterval) clearInterval(sensorInterval);
   log('[Sensors] Starting updates, webhookId: ' + (haClient ? haClient.webhookId : 'null'));
 
-  const update = async () => {
-    if (!haClient || !haClient.webhookId) return;
-    try {
-      const sensors = await collectSensors();
-      if (sensors.length > 0) {
-        await haClient.updateSensors(sensors);
-        log('[Sensors] ' + sensors.length + ' updated: ' + sensors.map(s => s.unique_id + '=' + s.state).join(', '));
-      }
-    } catch (err) {
-      log('[Sensors] Error: ' + err.message);
-    }
-  };
+  const update = async () => { await updateSensors(); };
 
   await update();
   sensorInterval = setInterval(update, 60000);
