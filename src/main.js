@@ -329,12 +329,8 @@ async function collectSensors() {
       }
     }
 
-    // Display
-    sensors.push({
-      unique_id: 'display_state',
-      state: mainWindow && !mainWindow.isDestroyed() ? 'on' : 'off',
-      type: 'binary_sensor', name: 'Display', icon: 'mdi:monitor',
-    });
+    // NOTE: display state sensor is pushed at the top of collectSensors (TouchSense)
+
 
   } catch (err) {
     log('Sensor error: ' + err.message);
@@ -673,8 +669,8 @@ function getLocalIP() {
   const nets = os.networkInterfaces();
   for (const name of Object.keys(nets)) {
     for (const n of nets[name]) {
-      if (n.family === 'IPv4' && !n.internal && (name.startsWith('eth') || name.startsWith('wlan') || name.startsWith('end'))) {
-        return n.address;
+      if (n.family === 'IPv4' && !n.internal && !/^(docker|veth|br-|wg|zt|tun|tap|virbr|vmnet)/.test(name)) {
+        return n.address; // any real interface: eth*/enp*/wlan*/wlp*/end* ...
       }
     }
   }
