@@ -280,7 +280,7 @@ class DisplayController extends (require('events')) {
           name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
           isTouch = /touch/i.test(name);
           const p = fs.realpathSync('/sys/class/input/' + n + '/device');
-          isUsb = /\/usb\//.test(p);
+          isUsb = /usb\d*\//.test(p) || /\.usb\//.test(p);
         } catch (_) { continue; }
         if (isTouch) { hasTouch = true; if (isUsb) hasUsbTouch = true; }
       }
@@ -296,7 +296,7 @@ class DisplayController extends (require('events')) {
           const name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
           if (!/touch/i.test(name)) continue;
           const p = fs.realpathSync('/sys/class/input/' + n + '/device');
-          if (/\/usb\//.test(p)) return true;
+          if (/usb\d*\//.test(p) || /\.usb\//.test(p)) return true;
         } catch (_) {}
       }
     } catch (_) {}
