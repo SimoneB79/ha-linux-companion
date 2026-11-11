@@ -1,3 +1,19 @@
+## v4.3.0 — Adaptive display strategy (2026-11-11)
+
+### New: displayStrategy (auto | real | overlay), default auto
+- **auto** picks the blanking mode by TOUCH BUS, before ever blanking:
+  - touch on internal bus (i2c/DSI, e.g. Raspberry 7" DSI) or no touch at all
+    -> native power-off (DPMS) with touch wake
+  - USB touch detected (e.g. Elecrow 10.1" with ILITEK — cuts the touch
+    controller when the HDMI signal stops) -> black overlay, touch stays alive
+- Decision is persisted per panel (displayBackend) and shown in the log
+- 'real' / 'overlay' force a mode; legacy displayRealOff=true still forces real
+
+### Why
+- Fleet panels with USB touch can never wake by touch after a real power-off
+  (hardware behavior, verified). auto guarantees the touch survives on every
+  panel without manual configuration.
+
 ## v4.2.0 — Real display power off (2026-11-11)
 
 ### New backend: GNOME screensaver (D-Bus)

@@ -59,17 +59,43 @@ class DisplayController extends (require('events')) {
 
   async init(config) {
     this.applyConfig(config || {});
-    // A previously learned backend override (e.g. panels whose USB touch dies
-    // with DPMS off) avoids killing the touch controller on every restart.
-    if (config && config.displayBackend === 'overlay' && config.displayRealOff !== true) {
+    // displayStrategy: 'auto' (default) | 'real' | 'overlay'
+    //   auto   -> real DPMS when the touch is internal (i2c/DSI) or absent,
+    //             black overlay when a USB touch is present (it would die)
+    //   real   -> always native power-off (displayRealOff equivalent)
+    //   overlay-> always black overlay (touch always alive)
+    const strategy = (config && config.displayStrategy) || 'auto';
+    const learnedOverlay = config && config.displayBackend === 'overlay';
+    if (strategy === 'overlay') {
       this.backend = 'overlay';
-      this.log('[DSP] using learned backend: overlay (touch dies with DPMS off)');
-    } else {
-      if (config && config.displayBackend === 'overlay') {
-        this.log('[DSP] displayRealOff requested: ignoring learned overlay, re-detecting native backend');
-      }
+      this.log('[DSP] strategy=overlay (forced)');
+    } else if (strategy === 'real') {
       await this._detectBackend();
+      this.log('[DSP] strategy=real (forced)');
+    } else if (config && config.displayRealOff === true) {
+      await this._detectBackend();
+      this.log('[DSP] displayRealOff legacy flag -> real off');
+    } else if (learnedOverlay) {
+      this.backend = 'overlay';
+      this.log('[DSP] using learned backend: overlay');
+    } else {
+      const internalTouch = this._touchIsInternalOnly();
+      if (internalTouch) {
+        await this._detectBackend();
+        this.log('[DSP] auto: internal touch -> native power-off');
+      } else {
+        const hasUsbTouch = this._hasUsbTouch();
+        if (hasUsbTouch) {
+          this.backend = 'overlay';
+          this.emit('backend-learned', 'overlay');
+          this.log('[DSP] auto: USB touch detected -> black overlay (touch stays alive)');
+        } else {
+          await this._detectBackend();
+          this.log('[DSP] auto: no touch device -> native power-off');
+        }
+      }
     }
+    // (backend selection handled above by displayStrategy)
     this._startEvdevWatchers();
     this.log(`[DSP] init backend=${this.backend} output=${this.outputName || '-'} mode=${this.mode} timeout=${this.timeoutMin}min`);
     // Never start with the screen off
@@ -241,6 +267,42 @@ class DisplayController extends (require('events')) {
   }
 
   // ── Activity (evdev raw input watchers — work even with display off) ─
+  // Touch on an internal bus (i2c/DSI/serio) survives display power-off;
+  // USB touch panels (e.g. Elecrow/ILITEK) usually cut the controller with
+  // the HDMI signal. Used by displayStrategy=auto to pick the blanking mode.
+  _touchIsInternalOnly() {
+    try {
+      const evs = fs.readdirSync('/sys/class/input').filter(n => n.startsWith('event'));
+      let hasTouch = false, hasUsbTouch = false;
+      for (const n of evs) {
+        let name = '', isTouch = false, isUsb = false;
+        try {
+          name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
+          isTouch = /touch/i.test(name);
+          const p = fs.realpathSync('/sys/class/input/' + n + '/device');
+          isUsb = /\/usb\//.test(p);
+        } catch (_) { continue; }
+        if (isTouch) { hasTouch = true; if (isUsb) hasUsbTouch = true; }
+      }
+      return hasTouch && !hasUsbTouch;
+    } catch (_) { return false; }
+  }
+
+  _hasUsbTouch() {
+    try {
+      const evs = fs.readdirSync('/sys/class/input').filter(n => n.startsWith('event'));
+      for (const n of evs) {
+        try {
+          const name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
+          if (!/touch/i.test(name)) continue;
+          const p = fs.realpathSync('/sys/class/input/' + n + '/device');
+          if (/\/usb\//.test(p)) return true;
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return false;
+  }
+
   _touchCount() {
     try {
       return fs.readdirSync('/sys/class/input').filter(n => n.startsWith('event')).filter(n => {
