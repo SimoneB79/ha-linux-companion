@@ -687,6 +687,7 @@ function loadDashboard() {
 
         if (haClient) startSensorUpdates();
         connectNotifications();
+        startOverlayWatchdog();
       });
       mainWindow.webContents.reload();
     });
@@ -1473,6 +1474,26 @@ function showNotification(title, message, options = {}) {
 }
 
 // ── Desktop entry (auto-installed app icon) ──
+// HA's frontend re-renders its DOM on reconnects/theme changes and can wipe
+// the injected companion overlay (topbar/menu disappear). This watchdog
+// re-injects the overlay when that happens.
+let overlayWatchdogTimer = null;
+function startOverlayWatchdog() {
+  if (overlayWatchdogTimer) clearInterval(overlayWatchdogTimer);
+  overlayWatchdogTimer = setInterval(async () => {
+    try {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const alive = await mainWindow.webContents.executeJavaScript("!!document.getElementById('ha-comp-topbar')", true);
+      if (alive) return;
+      log('[Overlay] wiped by HA re-render — re-injecting');
+      mainWindow.webContents.executeJavaScript('window.__haCompanionMenu = false');
+      const overlayJs = fs.readFileSync(path.join(__dirname, 'views', 'overlay.js'), 'utf8');
+      await mainWindow.webContents.executeJavaScript(overlayJs);
+    } catch (_) {}
+  }, 20000);
+  if (overlayWatchdogTimer.unref) overlayWatchdogTimer.unref();
+}
+
 function installDesktopEntry() {
   try {
     const home = os.homedir();
