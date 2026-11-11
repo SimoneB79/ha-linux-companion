@@ -277,8 +277,7 @@ class DisplayController extends (require('events')) {
       for (const n of evs) {
         let name = '', isTouch = false, isUsb = false;
         try {
-          name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
-          isTouch = /touch/i.test(name);
+          isTouch = this._isTouchDevice(n);
           const p = fs.realpathSync('/sys/class/input/' + n + '/device');
           isUsb = /usb\d*\//.test(p) || /\.usb\//.test(p);
         } catch (_) { continue; }
@@ -293,8 +292,7 @@ class DisplayController extends (require('events')) {
       const evs = fs.readdirSync('/sys/class/input').filter(n => n.startsWith('event'));
       for (const n of evs) {
         try {
-          const name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
-          if (!/touch/i.test(name)) continue;
+          if (!this._isTouchDevice(n)) continue;
           const p = fs.realpathSync('/sys/class/input/' + n + '/device');
           if (/usb\d*\//.test(p) || /\.usb\//.test(p)) return true;
         } catch (_) {}
@@ -303,7 +301,21 @@ class DisplayController extends (require('events')) {
     return false;
   }
 
+  _isTouchDevice(n) {
+    // BTN_TOUCH (code 0x14a = 330) in the key capabilities is the definitive
+    // touchscreen marker — works for badly named controllers like 'QDtech MPI1001'.
+    try {
+      const name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
+      if (/touch/i.test(name)) return true;
+      const key = fs.readFileSync('/sys/class/input/' + n + '/device/capabilities/key', 'utf8').trim();
+      if (!key || key === '0') return false;
+      const bits = BigInt('0x' + key.replace(/\s+/g, ''));
+      return ((bits >> 330n) & 1n) === 1n;
+    } catch (_) { return false; }
+  }
+
   _touchCount() {
+
     try {
       return fs.readdirSync('/sys/class/input').filter(n => n.startsWith('event')).filter(n => {
         try { return /touch/i.test(fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8')); }
