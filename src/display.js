@@ -302,15 +302,16 @@ class DisplayController extends (require('events')) {
   }
 
   _isTouchDevice(n) {
-    // BTN_TOUCH (code 0x14a = 330) in the key capabilities is the definitive
-    // touchscreen marker — works for badly named controllers like 'QDtech MPI1001'.
+    // Touchscreen markers, hardware-level (names can lie: 'QDtech MPI1001'):
+    //  - 'touch' in the input name, OR
+    //  - ABS_MT_POSITION_X (code 0x35 = 53) set in the abs capabilities
     try {
       const name = fs.readFileSync('/sys/class/input/' + n + '/device/name', 'utf8');
       if (/touch/i.test(name)) return true;
-      const key = fs.readFileSync('/sys/class/input/' + n + '/device/capabilities/key', 'utf8').trim();
-      if (!key || key === '0') return false;
-      const bits = BigInt('0x' + key.replace(/\s+/g, ''));
-      return ((bits >> 330n) & 1n) === 1n;
+      const abs = fs.readFileSync('/sys/class/input/' + n + '/device/capabilities/abs', 'utf8').trim();
+      if (!abs || abs === '0') return false;
+      const bits = BigInt('0x' + abs.replace(/\s+/g, ''));
+      return ((bits >> 53n) & 1n) === 1n;
     } catch (_) { return false; }
   }
 
