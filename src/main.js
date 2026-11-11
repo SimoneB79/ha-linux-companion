@@ -407,6 +407,11 @@ function createMainWindow() {
     show: false, // Show when ready
   });
 
+  // renderer console → app.log (JS errors visibility on panels)
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    if (level >= 2) log('[Renderer] ' + String(message).slice(0, 300));
+  });
+
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     if (config.fullscreen !== false) {
@@ -947,6 +952,14 @@ function connectNotifications() {
   haWs.on('error', (err) => {
     log('[WS] Error: ' + err.message);
     wsConnecting = false;
+    if (wsConnectTimer) { clearTimeout(wsConnectTimer); wsConnectTimer = null; }
+    try { if (haWs) { haWs.removeAllListeners(); haWs.terminate(); } } catch (_) {}
+    haWs = null;
+    // ALWAYS re-arm the reconnect: a socket error must never leave the
+    // connection loop stalled (verified stall: 40 min after ECONNREFUSED)
+    if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+    wsReconnectTimer = setTimeout(connectNotifications, 10000);
+    if (wsReconnectTimer.unref) wsReconnectTimer.unref();
   });
 }
 
