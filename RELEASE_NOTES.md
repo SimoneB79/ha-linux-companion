@@ -1,3 +1,20 @@
+## v4.2.0 — Real display power off (2026-11-11)
+
+### New backend: GNOME screensaver (D-Bus)
+- On GNOME/Wayland desktops the display now blanks via `org.gnome.ScreenSaver` —
+  the monitor goes to REAL standby (verified: backlight off, not a black window)
+- Backend order: wayland (wlr-randr) -> gnome (D-Bus) -> x11 (xrandr) -> overlay
+
+### New option: displayRealOff
+- `"displayRealOff": true` in config.json: the panel uses only native power-off;
+  the black overlay fallback is DISABLED (if native off fails, an error is logged and
+  the screen stays on — no silent fake-off)
+- With displayRealOff the USB-touch self-heal is skipped: panels that cut touch power
+  on DPMS-off keep REAL off; wake via HA commands/presence instead of touch
+
+### Kiosk hardening (from field testing)
+- `--password-store=basic` for Electron under autologin (no GNOME keyring prompt)
+
 ## v4.1.0 — HA-controlled display + desktop icon (2026-11-10)
 
 ### Screen control from Home Assistant

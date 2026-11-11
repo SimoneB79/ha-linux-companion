@@ -61,10 +61,13 @@ class DisplayController extends (require('events')) {
     this.applyConfig(config || {});
     // A previously learned backend override (e.g. panels whose USB touch dies
     // with DPMS off) avoids killing the touch controller on every restart.
-    if (config && config.displayBackend === 'overlay') {
+    if (config && config.displayBackend === 'overlay' && config.displayRealOff !== true) {
       this.backend = 'overlay';
       this.log('[DSP] using learned backend: overlay (touch dies with DPMS off)');
     } else {
+      if (config && config.displayBackend === 'overlay') {
+        this.log('[DSP] displayRealOff requested: ignoring learned overlay, re-detecting native backend');
+      }
       await this._detectBackend();
     }
     this._startEvdevWatchers();
@@ -76,6 +79,9 @@ class DisplayController extends (require('events')) {
   applyConfig(config) {
     const modes = ['alwaysOn', 'touchWake', 'presenceWake'];
     this.mode = modes.includes(config.displayMode) ? config.displayMode : 'alwaysOn';
+    // displayRealOff: never fall back to the black overlay — the owner wants
+    // real DPMS/standby even if a panel's USB touch dies (wake via HA/presence)
+    this.realOff = config.displayRealOff === true;
     const t = Number(config.displayTimeoutMin);
     this.timeoutMin = Number.isFinite(t) && t > 0 ? t : 5;
     this.presenceEntity = String(config.presenceEntity || '').trim();
@@ -108,10 +114,15 @@ class DisplayController extends (require('events')) {
         this.outputName = outs[0];
         return;
       }
-      // wlr-randr missing → try installing hint but fall through
-      this.log('[DSP] Wayland detected but wlr-randr unavailable/unusable — falling back to overlay');
+      // GNOME/mutter Wayland: real blank + monitor standby via D-Bus screensaver
+      if (await this._gnomeScreensaverAvailable()) {
+        this.backend = 'gnome';
+        this.log('[DSP] GNOME session: org.gnome.ScreenSaver backend (real monitor standby)');
+        return;
+      }
+      this.log('[DSP] Wayland without wlr-randr nor GNOME screensaver');
     }
-    // 2. X11
+    // 3. X11
     if (process.env.DISPLAY) {
       const r = await sh('xrandr', ['--current']);
       if (r.ok) {
@@ -139,6 +150,9 @@ class DisplayController extends (require('events')) {
         if (outs[0] && outs[0] !== this.outputName) this.outputName = outs[0];
         const r = await sh('wlr-randr', ['--output', this.outputName, '--off']);
         if (!r.ok) throw new Error('wlr-randr off failed: ' + (r.err || ''));
+      } else if (this.backend === 'gnome') {
+        const r = await this._dbusScreensaver(true);
+        if (!r.ok) throw new Error('gnome screensaver SetActive failed: ' + (r.err || ''));
       } else if (this.backend === 'x11') {
         const r = await sh('xrandr', ['--output', this.outputName, '--off']);
         if (!r.ok) throw new Error('xrandr off failed: ' + (r.err || ''));
@@ -147,9 +161,9 @@ class DisplayController extends (require('events')) {
       this.log(`[DSP] screen OFF (backend=${this.backend})`);
       this.emit('blanked'); // main shows overlay window when backend === 'overlay'
       // Some HDMI panels cut power to their USB touch controller when the
-      // output goes into DPMS off. Detect that and self-heal: switch to
-      // overlay blanking (backlight on, touch alive) and restore the screen.
-      if (this.backend === 'wayland' || this.backend === 'x11') {
+      // output goes into DPMS off. Self-heal ONLY when displayRealOff is not
+      // requested: with displayRealOff the owner accepts losing touch wake.
+      if ((this.backend === 'wayland' || this.backend === 'x11') && !this.realOff) {
         // panel USB power can decay slowly: probe repeatedly over ~14s
         const probes = [2000, 4000, 8000, 14000];
         for (const delay of probes) {
@@ -169,10 +183,15 @@ class DisplayController extends (require('events')) {
         }
       }
     } catch (e) {
-      this.log('[DSP] screenOff error: ' + e.message + ' — using overlay fallback');
-      this.backend = 'overlay';
-      this.screenOff = true;
-      this.emit('blanked');
+      if (this.realOff) {
+        // displayRealOff: no fake black overlay — report loudly and keep the screen on
+        this.log('[DSP] screenOff error with displayRealOff: ' + e.message + ' — screen stays ON');
+      } else {
+        this.log('[DSP] screenOff error: ' + e.message + ' — using overlay fallback');
+        this.backend = 'overlay';
+        this.screenOff = true;
+        this.emit('blanked');
+      }
     } finally { this._switching = false; }
   }
 
@@ -204,6 +223,9 @@ class DisplayController extends (require('events')) {
         if (outs[0]) this.outputName = outs[0];
         const r = await sh('wlr-randr', ['--output', this.outputName, '--on']);
         if (!r.ok) throw new Error('wlr-randr on failed: ' + (r.err || ''));
+      } else if (this.backend === 'gnome') {
+        const r = await this._dbusScreensaver(false);
+        if (!r.ok) throw new Error('gnome screensaver deactivate failed: ' + (r.err || ''));
       } else if (this.backend === 'x11') {
         const r = await sh('xrandr', ['--output', this.outputName, '--auto']);
         if (!r.ok) throw new Error('xrandr on failed: ' + (r.err || ''));
@@ -242,6 +264,23 @@ class DisplayController extends (require('events')) {
       this.evdevWatchers = this.evdevWatchers.filter(w => wanted.has(w.path));
       for (const p of wanted) if (!this.evdevWatchers.some(w => w.path === p)) this._openWatcher(p);
     } catch (e) { this.log('[DSP] refresh watchers error: ' + e.message); }
+  }
+
+  async _gnomeScreensaverAvailable() {
+    if (!process.env.DBUS_SESSION_BUS_ADDRESS) return false;
+    const r = await sh('dbus-send', [
+      '--session', '--dest=org.freedesktop.DBus', '--type=method_call', '--print-reply', '/',
+      'org.freedesktop.DBus.NameHasOwner', 'string:org.gnome.ScreenSaver',
+    ]);
+    return r.ok && /boolean true/.test(r.stdout);
+  }
+
+  _dbusScreensaver(active) {
+    return sh('dbus-send', [
+      '--session', '--dest=org.gnome.ScreenSaver', '--type=method_call',
+      '--print-reply', '/org/gnome/ScreenSaver', 'org.gnome.ScreenSaver.SetActive',
+      'boolean:' + (active ? 'true' : 'false'),
+    ]);
   }
 
   _candidateDevices() {
