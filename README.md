@@ -30,6 +30,8 @@ See [Release Notes](RELEASE_NOTES.md).
 
 ## Features
 
+- **Self-update from the panel** (v4.4.0): the ⚙ menu checks the latest GitHub tag and can download, install and restart the app on its own — no SSH required
+
 - 🔐 **Login** — Username/password + 2FA/MFA, or long-lived token
 - 🔑 **Persistent sessions** — OAuth2 token management with proactive refresh, survives reboots
 - 📱 **Device registration** — Registers as `mobile_app` in HA integrations

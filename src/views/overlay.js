@@ -520,11 +520,41 @@
         html += '<div style="font-size:11px;color:#8E8E93">Dev: <a href="' + u.latestDev.url + '" target="_blank" style="color:#FF9500">' + u.latestDev.tag + '</a></div>';
       }
       html += '</div></div>';
-      // Show if update available
-      if (u.latestStable && u.latestStable.tag !== 'v' + u.current && u.latestStable.tag > 'v' + u.current) {
+      // Show if update available (numeric semver compare, not string)
+      function verNum(v){ return String(v).replace(/^v/,'').split('.').map(Number); }
+      function verNewer(a,b){ var x=verNum(a),y=verNum(b); for(var i=0;i<3;i++){ if((x[i]||0)!==(y[i]||0)) return (x[i]||0)>(y[i]||0); } return false; }
+      var upAvail = u.latestStable && verNewer(u.latestStable.tag, u.current);
+      if (upAvail) {
         html += '<div style="color:#30D158;font-size:12px;margin-top:4px">' + t('updateAvailable') + '</div>';
+        html += '<div class="comp-row" style="margin-top:6px"><button class="comp-btn secondary" id="comp-update-now">⬇ ' + t('updateNow') + ' ' + u.latestStable.tag + '</button></div>';
       }
       el.innerHTML = html;
+
+      var btn = document.getElementById('comp-update-now');
+      if (btn) {
+        var armed = false;
+        btn.addEventListener('click', function () {
+          if (!armed) {
+            armed = true;
+            btn.textContent = '⚠️ ' + t('updateConfirm') + ' ' + u.latestStable.tag;
+            btn.classList.add('warning');
+            return;
+          }
+          btn.disabled = true;
+          btn.textContent = '⬇ ' + t('updateDownloading');
+          ipc('applyUpdate', u.latestStable.tag).then(function (r) {
+            if (!r || r.error) {
+              btn.textContent = '✕ ' + t('updateFailed') + (r && r.error ? (': ' + r.error) : '');
+              btn.classList.add('danger');
+              btn.disabled = false;
+              return;
+            }
+            btn.textContent = (r.restart === 'manual')
+              ? '✓ ' + t('updateManualRestart')
+              : '🔄 ' + t('updateRestarting');
+          });
+        });
+      }
     });
   }
 

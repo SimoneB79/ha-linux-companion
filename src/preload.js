@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('haCompanion', {
 
   // Updates
   checkUpdates: () => ipcRenderer.invoke('check-updates'),
+  applyUpdate: (tag) => ipcRenderer.invoke('apply-update', tag),
 
   // Schedule
   getSchedule: () => ipcRenderer.invoke('get-schedule'),

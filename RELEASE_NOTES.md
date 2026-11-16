@@ -1,3 +1,17 @@
+## v4.4.0 — In-app self-updater (2026-11-16)
+
+### New: update from the panel (⚙ menu → Updates)
+- "Check updates" now reads the latest git TAG (several releases shipped tag-only; /releases reported a stale v4.1.4)
+- If a newer version exists, a **⬇ Update to vX.Y.Z** button appears: tap twice to confirm
+- The app downloads the tag tarball from GitHub, backs up src/ + package.json (src.bak-<timestamp>), replaces the code, syntax-checks the new main.js, then restarts itself — no SSH needed
+- Only src/ and package.json are touched: node_modules and ~/.config are never modified
+- Kiosk-cage hosts (COMPANION_KIOSK=1 in the wrapper) get "updated — restart the panel" instead of a self-restart
+
+### Fixed
+- v4.3.5: Electron crash dialog "WebSocket was closed before the connection was established" on panels while HA restarts (safeCloseWs + uncaughtException/unhandledRejection safety net)
+- v4.3.6: cold-boot self-healing — panels booting while local docker HA is still down now retry (did-fail-load handler + injection chain catch); command_reload_dashboard reloads the full chain
+- command_wg_up/down (remote assistance tunnel) merged into the main codebase: the mini-PC no longer needs a local fork, and self-update is safe there too
+
 ## v4.3.0 — Adaptive display strategy (2026-11-11)
 
 ### New: displayStrategy (auto | real | overlay), default auto

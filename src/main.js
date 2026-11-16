@@ -5,6 +5,7 @@
 
 const { app, BrowserWindow, ipcMain, Tray, Menu, shell, dialog, screen, Notification } = require('electron');
 const path = require('path');
+const updater = require('./updater');
 const url = require('url');
 const fs = require('fs');
 const https = require('https');
@@ -1368,6 +1369,21 @@ function handleNotificationCommand(message, data) {
       log('[Command] screen_off');
       return true;
 
+    case 'command_wg_up':
+    case 'command_wg_down': {
+      // Remote-assistance tunnel toggle (mini-PC Andrea). Guarded: harmless
+      // no-op on hosts without ws-wg installed, so the same main.js ships
+      // everywhere (Andrea no longer needs a local fork).
+      const wgAction = (d.command === 'command_wg_up') ? 'up' : 'down';
+      if (fs.existsSync('/usr/local/bin/ws-wg')) {
+        runShell('sudo /usr/local/bin/ws-wg ' + wgAction);
+        log('[Command] wg_' + wgAction);
+      } else {
+        log('[Command] wg_' + wgAction + ' ignored: ws-wg not installed on this host');
+      }
+      return true;
+    }
+
     case 'command_screen_brightness_level':
       if (d.brightness !== undefined) {
         const val = Math.max(10, Math.min(100, parseInt(d.brightness)));
@@ -1930,26 +1946,40 @@ ipcMain.handle('get-hardware-info', () => {
 // ── Update Channel ──
 ipcMain.handle('check-updates', async () => {
   try {
-    const https = require('https');
-    const data = await new Promise((resolve, reject) => {
-      https.get('https://api.github.com/repos/SimoneB79/ha-linux-companion/releases', {
-        headers: { 'User-Agent': 'ha-linux-companion' }
-      }, (res) => {
-        let body = '';
-        res.on('data', chunk => body += chunk);
-        res.on('end', () => resolve(JSON.parse(body)));
-      }).on('error', reject);
-    });
     const current = APP_VERSION;
-    const latest = data.find(r => !r.prerelease);
-    const latestDev = data.find(r => r.prerelease);
+    // Latest comes from git TAGS: several versions shipped tag-only
+    // (v4.2.x-v4.3.x) and /releases would report a stale v4.1.4.
+    const latest = await updater.fetchLatestStable();
     return {
       current,
-      latestStable: latest ? { tag: latest.tag_name, name: latest.name, url: latest.html_url, date: latest.published_at } : null,
-      latestDev: latestDev ? { tag: latestDev.tag_name, name: latestDev.name, url: latestDev.html_url, date: latestDev.published_at } : null,
-      allReleases: data.slice(0, 5).map(r => ({ tag: r.tag_name, name: r.name, prerelease: r.prerelease, date: r.published_at, url: r.html_url })),
+      latestStable: latest ? { tag: latest.tag, name: latest.name, url: latest.url } : null,
+      latestDev: null,
+      canAutoUpdate: true,
     };
   } catch (e) {
+    return { error: e.message };
+  }
+});
+
+ipcMain.handle('apply-update', async (_e, tag) => {
+  try {
+    const target = tag || ((await updater.fetchLatestStable()) || {}).tag;
+    if (!target) return { error: 'no tag available' };
+    if (!updater.isNewer(target, APP_VERSION)) return { error: 'already up to date', current: APP_VERSION };
+    log('[Updater] applying ' + target);
+    const result = await updater.applyUpdate(target, undefined, log);
+    // Under a cage kiosk (COMPANION_KIOSK=1 set by the wrapper) app.relaunch
+    // would die with the compositor: leave the restart to the owner.
+    if (process.env.COMPANION_KIOSK === '1') {
+      result.restart = 'manual';
+    } else {
+      result.restart = 'auto';
+      log('[Updater] restart in 1.2s');
+      setTimeout(() => { app.relaunch(); app.exit(0); }, 1200);
+    }
+    return result;
+  } catch (e) {
+    log('[Updater] failed: ' + e.message);
     return { error: e.message };
   }
 });
