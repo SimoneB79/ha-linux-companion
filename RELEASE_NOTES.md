@@ -1,3 +1,7 @@
+## v4.4.3 — Startup update check in log (2026-11-16)
+
+- 15s after boot the app logs one line: "[Updater] up to date (vX)" or "[Updater] UPDATE AVAILABLE: vX (current vY)" — remote log monitoring immediately shows a lagging panel.
+
 ## v4.4.2 — Correct self-restart under systemd + update toast (2026-11-16)
 
 - Fixed: after an in-panel update the app did not come back when running as a systemd service — exit(0) is not a failure and relaunch children die with the cgroup cleanup. It now exits with code 1 so Restart=on-failure restarts the unit; standalone runs still relaunch, cage kiosks ask for a manual restart

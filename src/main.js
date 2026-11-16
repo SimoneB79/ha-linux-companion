@@ -718,6 +718,22 @@ function loadDashboard() {
             }
           }
         } catch (_) {}
+
+        // One-shot silent update check at startup: one log line tells remote
+        // monitoring whether this panel is current or behind.
+        if (!global.__updateChecked) {
+          global.__updateChecked = true;
+          setTimeout(async () => {
+            try {
+              const l = await updater.fetchLatestStable();
+              if (l && updater.isNewer(l.tag, APP_VERSION)) {
+                log('[Updater] UPDATE AVAILABLE: ' + l.tag + ' (current v' + APP_VERSION + ') — gear menu → Aggiornamenti');
+              } else {
+                log('[Updater] up to date (v' + APP_VERSION + ')');
+              }
+            } catch (_) {}
+          }, 15000);
+        }
       });
       mainWindow.webContents.reload();
     }).catch((err) => {
