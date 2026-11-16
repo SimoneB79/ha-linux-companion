@@ -457,7 +457,7 @@ function loadDashboard() {
   const haUrl = config.url.replace(/\/+$/, '');
   // Clear any pending reconnect and stale socket
   if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
-  if (haWs) { try { haWs.removeAllListeners(); haWs.close(); } catch(_) {} haWs = null; }
+  if (haWs) { safeCloseWs(haWs); haWs = null; }
 
   // NOTE: do NOT set wsConnecting here — connectNotifications owns that guard.
   // Setting it prematurely left it stuck=true forever and the push channel
@@ -806,14 +806,40 @@ let wsReconnectTimer = null;
 let wsConnecting = false;
 let wsConnectTimer = null;
 
+// ws emits an 'error' ("WebSocket was closed before the connection was
+// established") when closed/terminated while still CONNECTING. After
+// removeAllListeners() no error sink is left, so that error became an
+// uncaught exception in the main process → Electron crash dialog on the
+// panels (16/11, both Raspi5 and Raspi4 while HA casa was down). Always
+// re-attach a no-op error sink before closing.
+function safeCloseWs(ws) {
+  if (!ws) return;
+  try { ws.removeAllListeners(); } catch (_) {}
+  try { ws.on('error', () => {}); } catch (_) {}
+  try { ws.close(); } catch (_) { try { ws.terminate(); } catch (_) {} }
+}
+
 function cleanupWs() {
   if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
-  if (haWs) {
-    try { haWs.removeAllListeners(); haWs.close(); } catch (_) {}
-    haWs = null;
-  }
+  if (haWs) { safeCloseWs(haWs); haWs = null; }
   wsConnecting = false;
 }
+
+// Kiosk safety net: never die on an uncaught exception/rejection — log it,
+// reset the WS state and keep the panel alive (a wall panel must not sit
+// on a crash dialog while HA is restarting).
+process.on('uncaughtException', (err) => {
+  try { log('[MAIN] Uncaught exception: ' + ((err && err.stack) || err)); } catch (_) {}
+  try { safeCloseWs(haWs); } catch (_) {}
+  haWs = null;
+  wsConnecting = false;
+  if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  wsReconnectTimer = setTimeout(connectNotifications, 10000);
+  if (wsReconnectTimer.unref) wsReconnectTimer.unref();
+});
+process.on('unhandledRejection', (reason) => {
+  try { log('[MAIN] Unhandled rejection: ' + ((reason && reason.stack) || reason)); } catch (_) {}
+});
 function connectNotifications() {
   // Guard: prevent parallel connections
   if (wsConnecting) return;
@@ -826,7 +852,7 @@ function connectNotifications() {
   const haUrl = config.url.replace(/\/+$/, '');
   // Clear any pending reconnect and stale socket
   if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
-  if (haWs) { try { haWs.removeAllListeners(); haWs.close(); } catch(_) {} haWs = null; }
+  if (haWs) { safeCloseWs(haWs); haWs = null; }
 
   wsConnecting = true;
   const wsUrl = haUrl.replace(/^http/, 'ws') + '/api/websocket';
@@ -844,7 +870,7 @@ function connectNotifications() {
       if (wsConnecting) {
         log('[WS] connect timeout — forcing reset');
         wsConnecting = false;
-        try { haWs.removeAllListeners(); haWs.terminate(); } catch (_) {}
+        safeCloseWs(haWs);
         haWs = null;
         if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
         wsReconnectTimer = setTimeout(connectNotifications, 10000);
@@ -954,7 +980,7 @@ function connectNotifications() {
     log('[WS] Error: ' + err.message);
     wsConnecting = false;
     if (wsConnectTimer) { clearTimeout(wsConnectTimer); wsConnectTimer = null; }
-    try { if (haWs) { haWs.removeAllListeners(); haWs.terminate(); } } catch (_) {}
+    safeCloseWs(haWs);
     haWs = null;
     // ALWAYS re-arm the reconnect: a socket error must never leave the
     // connection loop stalled (verified stall: 40 min after ECONNREFUSED)
