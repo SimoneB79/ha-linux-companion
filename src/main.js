@@ -489,6 +489,18 @@ function loadDashboard() {
     }
   });
 
+  // Cold-boot gap: if HA (especially local docker HA) is still starting when
+  // the panel loads, the navigation itself fails and no usable page ever
+  // reaches did-finish-load — retry until HA answers (kiosk self-healing).
+  mainWindow.webContents.removeAllListeners('did-fail-load');
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame) return;
+    if (errorCode === -3) return; // ERR_ABORTED: navigation superseded
+    log('[Dashboard] load failed (' + errorCode + ' ' + errorDescription + ') — retrying in 10s');
+    authInjected = false;
+    setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) loadDashboard(); }, 10000);
+  });
+
   mainWindow.webContents.removeAllListeners('did-finish-load');
   mainWindow.webContents.on('did-finish-load', () => {
     if (authInjected) return;
@@ -690,6 +702,15 @@ function loadDashboard() {
         startOverlayWatchdog();
       });
       mainWindow.webContents.reload();
+    }).catch((err) => {
+      // The whole post-load chain (tokens → CSS → i18n → overlay → WS) hangs
+      // off this promise. If the first load landed on an error page (e.g.
+      // local HA still booting) executeJavaScript rejects: previously an
+      // unhandled rejection left the companion layer dead forever.
+      log('[Dashboard] injection chain failed: ' + ((err && err.message) || err) + ' — retrying in 10s');
+      authInjected = false;
+      dashboardLoaded = false;
+      setTimeout(() => { if (mainWindow && !mainWindow.isDestroyed()) loadDashboard(); }, 10000);
     });
   });
 }
@@ -1419,9 +1440,12 @@ function handleNotificationCommand(message, data) {
       return true;
 
     case 'command_reload_dashboard':
+      log('[Command] reload_dashboard');
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.reload();
-        log('[Command] reload_dashboard');
+        // Full chain reload (auth → overlay → WS), not just the renderer
+        // page: after a failed first injection a bare mainWindow.reload()
+        // leaves authInjected=true and the companion layer dead.
+        loadDashboard();
       }
       return true;
 
