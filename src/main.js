@@ -701,6 +701,23 @@ function loadDashboard() {
         if (haClient) startSensorUpdates();
         connectNotifications();
         startOverlayWatchdog();
+
+        // Post-update confirmation toast: update-applied.json is written by
+        // the updater right before the restart — show once, then drop it.
+        try {
+          const updFile = path.join(CONFIG_DIR, 'update-applied.json');
+          if (fs.existsSync(updFile)) {
+            const upd = JSON.parse(fs.readFileSync(updFile, 'utf8'));
+            fs.unlinkSync(updFile);
+            if (upd && upd.at && (Date.now() - upd.at) < 5 * 60000) {
+              const toastMsg = "\u2713 Aggiornato a " + String(upd.tag);
+              mainWindow.webContents.executeJavaScript(
+                "try{window.__haToast&&window.__haToast.show({title:'HA Companion',message:'" + toastMsg + "',priority:'success',duration:8000})}catch(e){}; true"
+              ).catch(() => {});
+              log('[Updater] confirmed update ' + upd.tag + ' on screen');
+            }
+          }
+        } catch (_) {}
       });
       mainWindow.webContents.reload();
     }).catch((err) => {
@@ -1968,13 +1985,27 @@ ipcMain.handle('apply-update', async (_e, tag) => {
     if (!updater.isNewer(target, APP_VERSION)) return { error: 'already up to date', current: APP_VERSION };
     log('[Updater] applying ' + target);
     const result = await updater.applyUpdate(target, undefined, log);
-    // Under a cage kiosk (COMPANION_KIOSK=1 set by the wrapper) app.relaunch
-    // would die with the compositor: leave the restart to the owner.
+    // Remember the update for the post-restart confirmation toast
+    try {
+      fs.writeFileSync(path.join(CONFIG_DIR, 'update-applied.json'), JSON.stringify({ tag: target, at: Date.now() }));
+    } catch (_) {}
+    // Restart strategy:
+    // - cage kiosk (COMPANION_KIOSK=1): app.relaunch would die with the
+    //   compositor — tell the owner to restart the panel manually
+    // - systemd service (INVOCATION_ID set): exit(1), Restart=on-failure
+    //   brings the unit back. app.relaunch children get killed by the cgroup
+    //   cleanup when the main exits, and exit(0) is not a failure — the panel
+    //   stayed dead after the update (verified on Renato 16/11)
+    // - standalone run: relaunch ourselves
     if (process.env.COMPANION_KIOSK === '1') {
       result.restart = 'manual';
+    } else if (process.env.INVOCATION_ID) {
+      result.restart = 'systemd';
+      log('[Updater] exiting for systemd restart in 1.2s');
+      setTimeout(() => { app.exit(1); }, 1200);
     } else {
       result.restart = 'auto';
-      log('[Updater] restart in 1.2s');
+      log('[Updater] relaunch in 1.2s');
       setTimeout(() => { app.relaunch(); app.exit(0); }, 1200);
     }
     return result;
