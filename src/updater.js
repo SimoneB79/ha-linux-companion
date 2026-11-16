@@ -131,6 +131,26 @@ async function applyUpdate(tag, appDir, log) {
   // 5. Syntax-check the new main.js before declaring success
   await run('node', ['--check', path.join(appDir, 'src', 'main.js')]);
 
+  // 6. Housekeeping: drop old extract dirs and tarballs, and backups older
+  // than 7 days, so repeated self-updates never fill the SD card.
+  try {
+    const cutoff = Date.now() - 7 * 86400000;
+    for (const f of fs.readdirSync(workDir)) {
+      const p = path.join(workDir, f);
+      try {
+        const st = fs.statSync(p);
+        if (f.startsWith('extract-')) fs.rmSync(p, { recursive: true, force: true });
+        else if (f.endsWith('.tar.gz') && st.mtimeMs < cutoff) fs.unlinkSync(p);
+      } catch (_) {}
+    }
+    for (const f of fs.readdirSync(appDir)) {
+      if (f.startsWith('src.bak-') || f.startsWith('package.json.bak-')) {
+        const p = path.join(appDir, f);
+        try { if (fs.statSync(p).mtimeMs < cutoff) fs.rmSync(p, { recursive: true, force: true }); } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
   log('[Updater] applied ' + vtag + ' (backup: src.bak-' + stamp + ')');
   return { ok: true, tag: vtag, backup: 'src.bak-' + stamp };
 }

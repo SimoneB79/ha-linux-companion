@@ -1,3 +1,7 @@
+## v4.4.1 — Updater housekeeping (2026-11-16)
+
+- After each self-update the app now removes old extract dirs and tarballs and prunes update backups older than 7 days — repeated in-panel updates never fill the SD card.
+
 ## v4.4.0 — In-app self-updater (2026-11-16)
 
 ### New: update from the panel (⚙ menu → Updates)
